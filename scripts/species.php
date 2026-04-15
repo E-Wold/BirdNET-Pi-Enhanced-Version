@@ -184,6 +184,10 @@ if ($image_provider && $image_provider->is_reset()) {
 .stats-table { width: 100%; font-size: 0.85rem; }
 .stats-table tr td:first-child { color: var(--text-muted); padding-bottom: 4px; }
 .stats-table tr td:last-child { text-align: right; font-weight: 600; color: var(--text-primary); padding-bottom: 4px; }
+.species-card-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.species-card-links .mrd-link-pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; text-decoration: none; color: var(--text-muted); background: var(--bg-input, #f1f5f9); border: 1px solid var(--border); transition: background 0.2s, color 0.2s; }
+.species-card-links .mrd-link-pill img { width: 12px; height: 12px; }
+.species-card-links .mrd-link-pill:hover { background: var(--accent); color: white; }
 
 </style>
 
@@ -304,6 +308,11 @@ if ($image_provider && $image_provider->is_reset()) {
                         <tr><td>Confidence:</td><td><?php echo round($bird['MaxConf'] * 100, 1); ?>%</td></tr>
                         <tr><td>First:</td><td><?php echo date('n/j/Y', strtotime($bird['FirstDate'])); ?></td></tr>
                     </table>
+                    <?php $info = get_info_url($sci_name); ?>
+                    <div class="species-card-links">
+                        <a href="<?php echo $info['URL']; ?>" target="_blank" class="mrd-link-pill"><img src="images/info.png"> <?php echo $info['TITLE']; ?></a>
+                        <a href="https://wikipedia.org/wiki/<?php echo urlencode($sci_name); ?>" target="_blank" class="mrd-link-pill"><img src="images/wiki.png"> Wikipedia</a>
+                    </div>
                 </div>
             </div>
         <?php endforeach; ?>
