@@ -11,29 +11,73 @@ $home = get_home();
 $config = get_config();
 $user = get_user();
 
+function request_value($value) {
+  return htmlspecialchars_decode(rawurldecode((string)$value), ENT_QUOTES);
+}
+
+function normalize_recording_relative_path($path) {
+  $decoded = request_value($path);
+  $decoded = str_replace('\\', '/', $decoded);
+  $decoded = preg_replace('#/+#', '/', ltrim($decoded, '/'));
+
+  if ($decoded === '' || preg_match('/[\x00-\x1F\x7F]/', $decoded)) {
+    return false;
+  }
+
+  $parts = explode('/', $decoded);
+  if (count($parts) < 3) {
+    return false;
+  }
+
+  foreach ($parts as $part) {
+    if ($part === '' || $part === '.' || $part === '..') {
+      return false;
+    }
+  }
+
+  if ($parts[0] === 'shifted') {
+    return false;
+  }
+
+  return implode('/', $parts);
+}
+
+function recording_absolute_path($home, $relative, $shifted = false) {
+  return $home . '/BirdSongs/Extracted/By_Date/' . ($shifted ? 'shifted/' : '') . $relative;
+}
+
+function recording_file_name($relative) {
+  $parts = explode('/', $relative);
+  return end($parts);
+}
+
 $db = new SQLite3('./scripts/birds.db', SQLITE3_OPEN_READONLY);
 $db->busyTimeout(1000);
 
 if(isset($_GET['deletefile'])) {
   ensure_authenticated('You must be authenticated to delete files.');
-  if (preg_match('~^.*(\.\.\/).+$~', $_GET['deletefile'])) {
+  $relative_file = normalize_recording_relative_path($_GET['deletefile']);
+  if ($relative_file === false) {
     echo "Error";
     die();
   }
   $db_writable = new SQLite3('./scripts/birds.db', SQLITE3_OPEN_READWRITE);
-  $db->busyTimeout(1000);
+  $db_writable->busyTimeout(1000);
   $statement1 = $db_writable->prepare('DELETE FROM detections WHERE File_Name = :file_name LIMIT 1');
   ensure_db_ok($statement1);
-  $statement1->bindValue(':file_name', explode("/", $_GET['deletefile'])[2]);
-  $file_pointer = $home."/BirdSongs/Extracted/By_Date/".$_GET['deletefile'];
-  if (!exec("sudo rm ".escapeshellarg($file_pointer)." 2>&1 && sudo rm ".escapeshellarg($file_pointer.".png")." 2>&1", $output)) {
-    echo "OK";
-  } else {
+  $statement1->bindValue(':file_name', recording_file_name($relative_file), SQLITE3_TEXT);
+  $file_pointer = recording_absolute_path($home, $relative_file);
+  $output = [];
+  exec("sudo rm -f ".escapeshellarg($file_pointer)." ".escapeshellarg($file_pointer.".png")." 2>&1", $output, $status);
+  if ($status !== 0) {
     echo "Error - file deletion failed : " . implode(", ", $output) . "<br>";
+    die();
   }
   $result1 = $statement1->execute();
   if ($result1 === false || $db_writable->changes() === 0) {
     echo "Error - database line deletion failed : " . $db_writable->lastErrorMsg();
+  } else {
+    echo "OK";
   }
   $db_writable->close();
   die();
@@ -41,12 +85,17 @@ if(isset($_GET['deletefile'])) {
 
 if(isset($_GET['excludefile'])) {
   ensure_authenticated('You must be authenticated to change the protection of files.');
+  $relative_file = normalize_recording_relative_path($_GET['excludefile']);
+  if ($relative_file === false) {
+    echo "Error";
+    die();
+  }
   if(!file_exists($home."/BirdNET-Pi/scripts/disk_check_exclude.txt")) {
     file_put_contents($home."/BirdNET-Pi/scripts/disk_check_exclude.txt", "##start\n##end\n");
   }
   if(isset($_GET['exclude_add'])) {
     $myfile = fopen($home."/BirdNET-Pi/scripts/disk_check_exclude.txt", "a") or die("Unable to open file!");
-    $txt = $_GET['excludefile'];
+    $txt = $relative_file;
     fwrite($myfile, $txt."\n");
     fwrite($myfile, $txt.".png\n");
     fclose($myfile);
@@ -54,7 +103,7 @@ if(isset($_GET['excludefile'])) {
     die();
   } else {
     $lines  = file($home."/BirdNET-Pi/scripts/disk_check_exclude.txt");
-    $search = $_GET['excludefile'];
+    $search = $relative_file;
 
     $result = '';
     foreach($lines as $line) {
@@ -76,13 +125,16 @@ if(isset($_GET['getlabels'])) {
 
 if(isset($_GET['changefile']) && isset($_GET['newname'])) {
   ensure_authenticated('You must be authenticated to delete files.');
-  if (preg_match('~^.*(\.\.\/).+$~', $_GET['changefile'])) {
+  $relative_file = normalize_recording_relative_path($_GET['changefile']);
+  if ($relative_file === false) {
     echo "Error";
     die();
   }
-  $oldname = basename(urldecode($_GET['changefile']));
-  $newname = urldecode($_GET['newname']);
-  if (!exec("sudo -u ".$user." ".$home."/BirdNET-Pi/scripts/birdnet_changeidentification.sh \"$oldname\" \"$newname\" log_errors 2>&1", $output)) {
+  $oldname = recording_file_name($relative_file);
+  $newname = request_value($_GET['newname']);
+  $output = [];
+  exec("sudo -u ".escapeshellarg($user)." ".escapeshellarg($home."/BirdNET-Pi/scripts/birdnet_changeidentification.sh")." ".escapeshellarg($oldname)." ".escapeshellarg($newname)." log_errors 2>&1", $output, $status);
+  if ($status === 0) {
     echo "OK";
   } else {
     echo "Error : " . implode(", ", $output) . "<br>";
@@ -95,7 +147,11 @@ $shifted_path = $home."/BirdSongs/Extracted/By_Date/shifted/";
 if(isset($_GET['shiftfile'])) {
   ensure_authenticated('You cannot shift files for this installation');
 
-    $filename = $_GET['shiftfile'];
+    $filename = normalize_recording_relative_path($_GET['shiftfile']);
+    if ($filename === false) {
+      echo "Error";
+      die();
+    }
     $pp = pathinfo($filename);
     $dir = $pp['dirname'];
     $fn  = $pp['filename'];
@@ -107,14 +163,14 @@ if(isset($_GET['shiftfile'])) {
 
   if ($freqshift_tool == "ffmpeg") {
     $cmd = "sudo /usr/bin/nohup /usr/bin/ffmpeg -y -i ".escapeshellarg($pi.$filename)." -af \"rubberband=pitch=".$config['FREQSHIFT_LO']."/".$config['FREQSHIFT_HI']."\" ".escapeshellarg($shifted_path.$filename)."";
-    shell_exec("sudo mkdir -p ".$shifted_path.$dir." && ".$cmd);
+    shell_exec("sudo mkdir -p ".escapeshellarg($shifted_path.$dir)." && ".$cmd);
 
   } else if ($freqshift_tool == "sox") {
     //linux.die.net/man/1/sox
     $soxopt = "-q";
     $soxpitch = $config['FREQSHIFT_PITCH'];
     $cmd = "sudo /usr/bin/nohup /usr/bin/sox ".escapeshellarg($pi.$filename)." ".escapeshellarg($shifted_path.$filename)." pitch ".$soxopt." ".$soxpitch;
-   shell_exec("sudo mkdir -p ".$shifted_path.$dir." && ".$cmd);
+   shell_exec("sudo mkdir -p ".escapeshellarg($shifted_path.$dir)." && ".$cmd);
   }
     } else {
      $cmd = "sudo rm -f " . escapeshellarg($shifted_path.$filename);
@@ -184,7 +240,7 @@ function deleteDetection(filename,copylink=false) {
         alert(this.responseText);
       }
     }
-    xhttp.open("GET", "play.php?deletefile="+filename, true);
+    xhttp.open("GET", "play.php?deletefile="+encodeURIComponent(filename), true);
     xhttp.send();
   }
 }
@@ -205,9 +261,9 @@ function toggleLock(filename, type, elem) {
     }
   }
   if(type == "add") {
-    xhttp.open("GET", "play.php?excludefile="+filename+"&exclude_add=true", true);
+    xhttp.open("GET", "play.php?excludefile="+encodeURIComponent(filename)+"&exclude_add=true", true);
   } else {
-    xhttp.open("GET", "play.php?excludefile="+filename+"&exclude_del=true", true);  
+    xhttp.open("GET", "play.php?excludefile="+encodeURIComponent(filename)+"&exclude_del=true", true);
   }
   xhttp.send();
   elem.setAttribute("src","images/spinner.gif");
@@ -250,10 +306,10 @@ function toggleShiftFreq(filename, shiftAction, elem) {
   }
   if(shiftAction == "shift") {
     console.log("shifting freqs of " + filename);
-    xhttp.open("GET", "play.php?shiftfile="+filename+"&doshift=true", true);
+    xhttp.open("GET", "play.php?shiftfile="+encodeURIComponent(filename)+"&doshift=true", true);
   } else {
     console.log("unshifting freqs of " + filename);
-    xhttp.open("GET", "play.php?shiftfile="+filename, true);  
+    xhttp.open("GET", "play.php?shiftfile="+encodeURIComponent(filename), true);
   }
   xhttp.send();
   elem.setAttribute("src","images/spinner.gif");
@@ -360,7 +416,7 @@ function changeDetection(filename,copylink=false) {
             alert(this.responseText);
           }
         }
-        xhttp2.open("GET", "play.php?changefile="+filename+"&newname="+newname, true);
+        xhttp2.open("GET", "play.php?changefile="+encodeURIComponent(filename)+"&newname="+encodeURIComponent(newname), true);
         xhttp2.send();
       }
       // Hide the modal box and reset the dropdown selection
@@ -878,7 +934,7 @@ if(isset($_GET['species'])){ ?>
     <div class="detail-sort-bar">
         <form action="views.php" method="GET" class="detail-sort-options">
             <input type="hidden" name="view" value="Recordings">
-            <input type="hidden" name="species" value="<?php echo $_GET['species']; ?>">
+            <input type="hidden" name="species" value="<?php echo h($_GET['species']); ?>">
             <button class="detail-sort-btn <?php echo (!isset($_GET['sort']) || $_GET['sort'] == '' || $_GET['sort'] == 'date') ? 'active' : ''; ?>" type="submit" name="sort" value="date">
                 <img src="images/sort_date.svg" alt="Date"> Date
             </button>
@@ -952,10 +1008,10 @@ $url = $info_url['URL'];
       break;
     }
 
-    if($iter < 100){
-      $imageelem = "<div class='custom-audio-player' data-audio-src=\"$filename\" data-image-src=\"$filename_png\"></div>";
-    } else {
-      $imageelem = "<a href=\"$filename\"><img src=\"$filename_png\"></a>";
+      if($iter < 100){
+        $imageelem = "<div class='custom-audio-player' data-audio-src=\"".h($filename)."\" data-image-src=\"".h($filename_png)."\"></div>";
+      } else {
+        $imageelem = "<a href=\"".h($filename)."\"><img src=\"".h($filename_png)."\"></a>";
     }
 
       if(!in_array($filename_formatted, $disk_check_exclude_arr)) {
@@ -983,17 +1039,20 @@ $url = $info_url['URL'];
       $conf_class = $conf_raw >= 0.8 ? 'conf-high' : ($conf_raw >= 0.5 ? 'conf-med' : 'conf-low');
       $display_date = date('M. j, Y', strtotime($date));
 
+      $filename_js = js_arg($filename_formatted);
+      $type_js = js_arg($type);
+      $shift_action_js = js_arg($shiftAction);
       echo "<div class='recording-card'>
         <div class='recording-meta'>
             <div class='recording-meta-left'>
-                <span class='rec-date'>$display_date $time</span>
-                <span class='recording-confidence $conf_class'>$values</span>
+                <span class='rec-date'>".h($display_date)." ".h($time)."</span>
+                <span class='recording-confidence ".h($conf_class)."'>".h($values)."</span>
             </div>
             <div class='recording-actions'>
-                <img src='images/delete.svg' onclick='deleteDetection(\"$filename_formatted\")' title='Delete Detection'>
-                <img src='images/bird.svg' onclick='changeDetection(\"$filename_formatted\")' title='Change Detection'>
-                <img onclick='toggleLock(\"$filename_formatted\",\"$type\", this)' title=\"$title\" src=\"$imageicon\">
-                <img onclick='toggleShiftFreq(\"$filename_formatted\",\"$shiftAction\", this)' title=\"$shiftTitle\" src=\"$shiftImageIcon\">
+                <img src='images/delete.svg' onclick='deleteDetection($filename_js)' title='Delete Detection'>
+                <img src='images/bird.svg' onclick='changeDetection($filename_js)' title='Change Detection'>
+                <img onclick='toggleLock($filename_js,$type_js, this)' title=\"".h($title)."\" src=\"".h($imageicon)."\">
+                <img onclick='toggleShiftFreq($filename_js,$shift_action_js, this)' title=\"".h($shiftTitle)."\" src=\"".h($shiftImageIcon)."\">
             </div>
         </div>
         $imageelem
@@ -1086,12 +1145,12 @@ echo "</div>"; // close recording-detail-wrap
           echo "<tr>
       <td class=\"relative\"> 
 
-<img style='cursor:pointer;right:120px' src='images/delete.svg' onclick='deleteDetection(\"".$filename_formatted."\", true)' class=\"copyimage\" width=25 title='Delete Detection'> 
-<img style='cursor:pointer;right:85px' src='images/bird.svg' onclick='changeDetection(\"".$filename_formatted."\")' class=\"copyimage\" width=25 title='Change Detection'> 
-<img style='cursor:pointer;right:45px' onclick='toggleLock(\"".$filename_formatted."\",\"".$type."\", this)' class=\"copyimage\" width=25 title=\"".$title."\" src=\"".$imageicon."\"> 
-<img style='cursor:pointer' onclick='toggleShiftFreq(\"".$filename_formatted."\",\"".$shiftAction."\", this)' class=\"copyimage\" width=25 title=\"".$shiftTitle."\" src=\"".$shiftImageIcon."\">$date $time<br>$values<br>
+<img style='cursor:pointer;right:120px' src='images/delete.svg' onclick='deleteDetection(".js_arg($filename_formatted).", true)' class=\"copyimage\" width=25 title='Delete Detection'>
+<img style='cursor:pointer;right:85px' src='images/bird.svg' onclick='changeDetection(".js_arg($filename_formatted).")' class=\"copyimage\" width=25 title='Change Detection'>
+<img style='cursor:pointer;right:45px' onclick='toggleLock(".js_arg($filename_formatted).",".js_arg($type).", this)' class=\"copyimage\" width=25 title=\"".h($title)."\" src=\"".h($imageicon)."\">
+<img style='cursor:pointer' onclick='toggleShiftFreq(".js_arg($filename_formatted).",".js_arg($shiftAction).", this)' class=\"copyimage\" width=25 title=\"".h($shiftTitle)."\" src=\"".h($shiftImageIcon)."\">".h($date)." ".h($time)."<br>".h($values)."<br>
 
-<div class='custom-audio-player' data-audio-src='$filename' data-image-src='$filename_png'></div>
+<div class='custom-audio-player' data-audio-src='".h($filename)."' data-image-src='".h($filename_png)."'></div>
 </td></tr>";
 
       }echo "</table>";}

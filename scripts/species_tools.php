@@ -57,6 +57,13 @@ $sf_thresh = isset($config['SF_THRESH']) ? (float)$config['SF_THRESH'] : 0.0;
 /* ---------- helpers ---------- */
 function join_path(...$parts): string { return preg_replace('#/+#', '/', implode('/', $parts)); }
 function can_unlink(string $p): bool { return is_link($p) || is_file($p); }
+function dir_within_base(string $dir, $base): bool {
+  if ($base === false) return false;
+  $real_dir = realpath($dir);
+  if ($real_dir === false) return false;
+  $real_base = rtrim($base, DIRECTORY_SEPARATOR);
+  return $real_dir === $real_base || strpos($real_dir, $real_base . DIRECTORY_SEPARATOR) === 0;
+}
 
 /* Collect files/dirs for a species */
 function collect_species_targets(SQLite3 $db, string $species, string $home, $base): array {
@@ -74,9 +81,10 @@ function collect_species_targets(SQLite3 $db, string $species, string $home, $ba
       join_path($home, 'BirdSongs/Extracted/By_Date/shifted', $row['Date'], $dir, $row['File_Name']),
     ];
     foreach ($candidates as $c) {
+      if (!dir_within_base(dirname($c), $base)) continue;
       if (can_unlink($c)) { $files[$c] = true; $dirs[] = dirname($c); continue; }
       $d = realpath(dirname($c));
-      if ($d !== false) {
+      if ($d !== false && dir_within_base($d, $base)) {
         $alt = $d . DIRECTORY_SEPARATOR . basename($c);
         if (can_unlink($alt)) { $files[$alt] = true; $dirs[] = dirname($alt); }
       }
@@ -122,7 +130,14 @@ if (isset($_GET['delete'])) {
   $info = collect_species_targets($db, $species, $home, $base);
   $deleted = count($info['files']);
   foreach ($info['dirs'] as $dir) {
-    if (exec("sudo rm -r ".escapeshellarg($dir)." 2>&1", $output)) {
+    if (!dir_within_base($dir, $base) || realpath($dir) === rtrim($base, DIRECTORY_SEPARATOR)) {
+      http_response_code(400);
+      echo json_encode(['error' => 'Refusing to delete unsafe path']);
+      exit;
+    }
+    $output = [];
+    exec("sudo rm -r ".escapeshellarg($dir)." 2>&1", $output, $status);
+    if ($status !== 0) {
       echo "Error - files deletion failed : " . implode(", ", $output) . "<br>";
 	  exit;
     }

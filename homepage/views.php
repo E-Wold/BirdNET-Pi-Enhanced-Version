@@ -496,7 +496,10 @@ function update_species_list($filename, $species, $add) {
 }
 
 if(isset($_GET['view'])){
-  if($_GET['view'] == "System Info"){echo "<iframe src='phpsysinfo/index.php'></iframe>";}
+  if($_GET['view'] == "System Info"){
+    ensure_authenticated();
+    echo "<iframe src='phpsysinfo/index.php'></iframe>";
+  }
   if($_GET['view'] == "System Controls"){
     ensure_authenticated();
     include('scripts/system_controls.php');
@@ -585,9 +588,11 @@ if(isset($_GET['view'])){
     include('scripts/species_tools.php');
   }
   if($_GET['view'] == "File"){
+    ensure_authenticated();
     echo "<iframe src='scripts/filemanager/filemanager.php'></iframe>";
   }
   if($_GET['view'] == "Adminer"){
+    ensure_authenticated();
     echo "<iframe src='scripts/adminer.php'></iframe>";
   }
   if($_GET['view'] == "Webterm"){
@@ -668,6 +673,7 @@ if(isset($_GET['view'])){
           session_unset();
         }
         $results = shell_exec("$command 2>&1");
+        $results = h($results);
         $results = str_replace("FAILURE", "<span style='color:red'>FAILURE</span>", $results);
         $results = str_replace("failed", "<span style='color:red'>failed</span>",$results);
         $results = str_replace("active (running)", "<span style='color:green'><b>active (running)</b></span>",$results);
@@ -717,7 +723,7 @@ if(isset($_GET['view'])){
         if(strlen($results) == 0) {
           $results = "This command has no output.";
         }
-        echo "<table style='min-width:70%;'><tr class='relative'><th>Output of command:`".$initcommand."`<button class='copyimage' style='right:40px' onclick='copyOutput(this);'>Copy</button></th></tr><tr><td style='padding-left: 0px;padding-right: 0px;padding-bottom: 0px;padding-top: 0px;'><pre class='bash' style='text-align:left;margin:0px'>$results</pre></td></tr></table>"; 
+        echo "<table style='min-width:70%;'><tr class='relative'><th>Output of command:`".h($initcommand)."`<button class='copyimage' style='right:40px' onclick='copyOutput(this);'>Copy</button></th></tr><tr><td style='padding-left: 0px;padding-right: 0px;padding-bottom: 0px;padding-top: 0px;'><pre class='bash' style='text-align:left;margin:0px'>$results</pre></td></tr></table>";
       }
     }
   ob_end_flush();

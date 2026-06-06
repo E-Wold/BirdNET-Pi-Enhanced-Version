@@ -5,6 +5,28 @@ define('__ROOT__', dirname(dirname(__FILE__)));
 if (session_status() !== PHP_SESSION_ACTIVE)
   session_start();
 
+function h($value) {
+  return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function js_arg($value) {
+  return json_encode((string)$value, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+}
+
+function request_int($source, $key, $default, $min = null, $max = null) {
+  $value = $default;
+  if (isset($source[$key]) && is_numeric($source[$key])) {
+    $value = intval($source[$key]);
+  }
+  if ($min !== null) {
+    $value = max($min, $value);
+  }
+  if ($max !== null) {
+    $value = min($max, $value);
+  }
+  return $value;
+}
+
 function ensure_db_ok($sql_stmt) {
   if ($sql_stmt == False) {
     echo "Database is busy";
@@ -84,6 +106,7 @@ function is_protected_view($view) {
     'Whitelisted',
     'Species Management',
     'Services',
+    'System Info',
     'Webterm',
     'Adminer',
     'File',
@@ -142,6 +165,7 @@ function get_label($record, $sort_by, $date=null) {
 }
 
 function get_db() {
+  static $_db = null;
   if (!isset($_db)) {
     $_db = new SQLite3('./scripts/birds.db', SQLITE3_OPEN_READONLY);
     $_db->busyTimeout(1000);
@@ -182,7 +206,8 @@ function fetch_all_detections($sci_name, $sort_by, $date=null) {
   $db = get_db();
   $filter = (isset($date)) ? "AND Date == :date" : "";
   if ($sort_by === "occurrences") {
-    $statement = $db->prepare("SELECT * FROM detections WHERE Sci_Name == :sci_name $filter ORDER BY COUNT(*) DESC");
+    $order = (isset($date)) ? "Time DESC" : "Date DESC, Time DESC";
+    $statement = $db->prepare("SELECT * FROM detections WHERE Sci_Name == :sci_name $filter ORDER BY $order");
   } elseif ($sort_by === "confidence") {
     $statement = $db->prepare("SELECT * FROM detections WHERE Sci_Name == :sci_name $filter ORDER BY Confidence DESC");
   } else {

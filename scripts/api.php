@@ -40,7 +40,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
     ]);
   }
 } elseif (preg_match('#^/api/v1/analytics/activity$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 30;
+  $days = request_int($_GET, 'days', 30, 1, 3650);
   $stmt = $db->prepare('SELECT strftime("%H", Time) as Hour, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Hour ORDER BY Hour ASC');
   $result = $stmt->execute();
   $data = [];
@@ -60,7 +60,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode($final_data);
 
 } elseif (preg_match('#^/api/v1/analytics/stats$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 7;
+  $days = request_int($_GET, 'days', 7, 1, 3650);
   
   // Total detections
   $stmt = $db->prepare('SELECT COUNT(*) as total FROM detections WHERE Date >= DATE("now", "-'.$days.' days")');
@@ -90,7 +90,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   ]);
 
 } elseif (preg_match('#^/api/v1/analytics/new_species$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 7;
+  $days = request_int($_GET, 'days', 7, 1, 3650);
   
   // Find species whose FIRST detection was within the last N days
   $stmt = $db->prepare('SELECT Com_Name, Sci_Name, MIN(Date) as first_date, MIN(Time) as first_time FROM detections GROUP BY Sci_Name HAVING first_date >= DATE("now", "-'.$days.' days") ORDER BY first_date DESC, first_time DESC');
@@ -105,7 +105,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode($data);
 
 } elseif (preg_match('#^/api/v1/analytics/diversity$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 30;
+  $days = request_int($_GET, 'days', 30, 1, 3650);
   
   $stmt = $db->prepare('SELECT Date, COUNT(DISTINCT(Sci_Name)) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Date ORDER BY Date ASC');
   $result = $stmt->execute();
@@ -122,7 +122,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode(["dates" => $dates, "counts" => $counts]);
 
 } elseif (preg_match('#^/api/v1/analytics/detections$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 30;
+  $days = request_int($_GET, 'days', 30, 1, 3650);
   
   $stmt = $db->prepare('SELECT Date, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Date ORDER BY Date ASC');
   $result = $stmt->execute();
@@ -139,8 +139,8 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode(["dates" => $dates, "counts" => $counts]);
 
 } elseif (preg_match('#^/api/v1/analytics/top_species$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 30;
-  $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? intval($_GET['limit']) : 10;
+  $days = request_int($_GET, 'days', 30, 1, 3650);
+  $limit = request_int($_GET, 'limit', 10, 1, 100);
   
   $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Com_Name ORDER BY Count DESC LIMIT '.$limit);
   $result = $stmt->execute();
@@ -154,7 +154,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode($data);
 
 } elseif (preg_match('#^/api/v1/analytics/trends$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 30;
+  $days = request_int($_GET, 'days', 30, 1, 3650);
   
   // Get target species: either from GET param or default to top 5
   $target_species = [];
@@ -204,7 +204,7 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode(["dates" => $dates_array, "series" => $data]);
 
 } elseif (preg_match('#^/api/v1/analytics/patterns$#', $requestUri)) {
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 30;
+  $days = request_int($_GET, 'days', 30, 1, 3650);
   
   // Get target species: either from GET param or default to top 5
   $target_species = [];
@@ -239,9 +239,8 @@ if (preg_match('#^/api/v1/image/(\S+)$#', $requestUri, $matches)) {
   echo json_encode($data);
 
 } elseif (preg_match('#^/api/v1/detections/recent$#', $requestUri)) {
-  $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? intval($_GET['limit']) : 20;
-  $days = isset($_GET['days']) && is_numeric($_GET['days']) ? intval($_GET['days']) : 0;
-  if ($limit > 100) $limit = 100;
+  $limit = request_int($_GET, 'limit', 20, 1, 100);
+  $days = request_int($_GET, 'days', 0, 0, 3650);
   
   $date_filter = $days > 0 ? 'Date >= DATE("now", "-'.$days.' days")' : 'Date = DATE("now", "localtime")';
   $stmt = $db->prepare('SELECT Com_Name, Sci_Name, Confidence, Date, Time FROM detections WHERE '.$date_filter.' ORDER BY Date DESC, Time DESC LIMIT '.$limit);

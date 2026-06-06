@@ -1,8 +1,8 @@
 <?php
 
 /* Prevent XSS input */
-$_GET   = filter_input_array(INPUT_GET, FILTER_SANITIZE_STRING);
-$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_STRING);
+$_GET   = filter_input_array(INPUT_GET, FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?: [];
+$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?: [];
 
 ini_set('session.gc_maxlifetime', 7200);
 session_set_cookie_params(7200);
@@ -36,7 +36,7 @@ if(isset($_GET['comname'])) {
  $birdName = htmlspecialchars_decode($_GET['comname'], ENT_QUOTES);
 
 // Set default days to 30 if not provided
-$days = isset($_GET['days']) ? intval($_GET['days']) : 30;
+$days = request_int($_GET, 'days', 30, 1, 3650);
 
 // Prepare a SQL statement to retrieve the detection data for the specified bird
 $stmt = $db->prepare('SELECT Date, COUNT(*) AS Detections FROM detections WHERE Com_Name = :com_name AND Date BETWEEN DATE("now", "-' . $days . ' days") AND DATE("now") GROUP BY Date');
@@ -127,6 +127,7 @@ function relativeTime($ts)
 
 
 if(isset($_GET['ajax_detections']) && $_GET['ajax_detections'] == "true"  ) {
+  $search_value = null;
   if(isset($_GET['searchterm'])) {
     if(strtolower(explode(" ", $_GET['searchterm'])[0]) == "not") {
       $not = "NOT ";
@@ -137,22 +138,28 @@ if(isset($_GET['ajax_detections']) && $_GET['ajax_detections'] == "true"  ) {
       $not = "";
       $operator = "OR";
     }
-    $searchquery = "AND (Com_name ".$not."LIKE '%".$_GET['searchterm']."%' ".$operator." Sci_name ".$not."LIKE '%".$_GET['searchterm']."%' ".$operator." Confidence ".$not."LIKE '%".$_GET['searchterm']."%' ".$operator." File_Name ".$not."LIKE '%".$_GET['searchterm']."%' ".$operator." Time ".$not."LIKE '%".$_GET['searchterm']."%')";
+    $search_value = '%' . $_GET['searchterm'] . '%';
+    $searchquery = "AND (Com_name ".$not."LIKE :searchterm ".$operator." Sci_name ".$not."LIKE :searchterm ".$operator." Confidence ".$not."LIKE :searchterm ".$operator." File_Name ".$not."LIKE :searchterm ".$operator." Time ".$not."LIKE :searchterm)";
   } else {
     $searchquery = "";
   }
   if(isset($_GET['display_limit']) && is_numeric($_GET['display_limit'])){
-    $statement0 = $db->prepare('SELECT Date, Time, Com_Name, Sci_Name, Confidence, File_Name FROM detections WHERE Date == Date(\'now\', \'localtime\') '.$searchquery.' ORDER BY Time DESC LIMIT '.(intval($_GET['display_limit'])-40).',40');
+    $offset = max(0, intval($_GET['display_limit']) - 40);
+    $statement0 = $db->prepare('SELECT Date, Time, Com_Name, Sci_Name, Confidence, File_Name FROM detections WHERE Date == Date(\'now\', \'localtime\') '.$searchquery.' ORDER BY Time DESC LIMIT '.$offset.',40');
   } else {
     // legacy mode
     if(isset($_GET['hard_limit']) && is_numeric($_GET['hard_limit'])) {
-      $statement0 = $db->prepare('SELECT Date, Time, Com_Name, Sci_Name, Confidence, File_Name FROM detections WHERE Date == Date(\'now\', \'localtime\') '.$searchquery.' ORDER BY Time DESC LIMIT '.$_GET['hard_limit']);
+      $hard_limit = request_int($_GET, 'hard_limit', 40, 1, 500);
+      $statement0 = $db->prepare('SELECT Date, Time, Com_Name, Sci_Name, Confidence, File_Name FROM detections WHERE Date == Date(\'now\', \'localtime\') '.$searchquery.' ORDER BY Time DESC LIMIT '.$hard_limit);
     } else {
       $statement0 = $db->prepare('SELECT Date, Time, Com_Name, Sci_Name, Confidence, File_Name FROM detections WHERE Date == Date(\'now\', \'localtime\') '.$searchquery.' ORDER BY Time DESC');
     }
     
   }
   ensure_db_ok($statement0);
+  if ($search_value !== null) {
+    $statement0->bindValue(':searchterm', $search_value, SQLITE3_TEXT);
+  }
   $result0 = $statement0->execute();
 
   ?> <table>
@@ -215,46 +222,46 @@ if(isset($_GET['ajax_detections']) && $_GET['ajax_detections'] == "true"  ) {
         <?php if(isset($_GET['display_limit']) && is_numeric($_GET['display_limit'])){ ?>
           <tr class="relative" id="<?php echo $iterations; ?>">
           <td class="relative">
-            <img style='cursor:pointer;right:45px' src='images/delete.svg' onclick='deleteDetection("<?php echo $filename_formatted; ?>")' class="copyimage" width=25 title='Delete Detection'>
-            <a target="_blank" href="index.php?filename=<?php echo $todaytable['File_Name']; ?>"><img class="copyimage" title="Open in new tab" width=25 src="images/copy.png"></a>
+            <img style='cursor:pointer;right:45px' src='images/delete.svg' onclick='deleteDetection(<?php echo js_arg($filename_formatted); ?>)' class="copyimage" width=25 title='Delete Detection'>
+            <a target="_blank" href="index.php?filename=<?php echo urlencode($todaytable['File_Name']); ?>"><img class="copyimage" title="Open in new tab" width=25 src="images/copy.png"></a>
         
             
           <div class="centered_image_container">
             <?php if(!empty($config["IMAGE_PROVIDER"]) && (isset($image[1]) && strlen($image[1]) > 0)) { ?>
-              <img onerror="this.style.display='none'" onclick='setModalText(<?php echo $iterations; ?>,"<?php echo urlencode($image[2]); ?>", "<?php echo $image[3]; ?>", "<?php echo $image[4]; ?>", "<?php echo $image[1]; ?>", "<?php echo $image[5]; ?>")' src="<?php echo $image[1]; ?>" class="img1">
+              <img onerror="this.style.display='none'" onclick='setModalText(<?php echo (int)$iterations; ?>, <?php echo js_arg($image[2]); ?>, <?php echo js_arg($image[3]); ?>, <?php echo js_arg($image[4]); ?>, <?php echo js_arg($image[1]); ?>, <?php echo js_arg($image[5]); ?>)' src="<?php echo h($image[1]); ?>" class="img1">
             <?php } ?>
 
-            <?php echo $todaytable['Time'];?><br>   
-          <b><a class="a2" href="<?php echo $url;?>" target="top"><?php echo $todaytable['Com_Name'];?></a></b><br>
-          <i><?php echo $todaytable['Sci_Name'];?></i>
-          <a href="<?php echo $url;?>" target="_blank"><img style="cursor:pointer;float:unset;display:inline" title=<?php echo $url_title;?> src="images/info.png" width="20"></a>
-          <a href="https://wikipedia.org/wiki/<?php echo $sciname;?>" target="_blank"><img style=";cursor:pointer;float:unset;display:inline" title="Wikipedia" src="images/wiki.png" width="20"></a>
-          <img style=";cursor:pointer;float:unset;display:inline" title="View species stats" onclick="generateMiniGraph(this, '<?php echo $comnamegraph; ?>')" width=20 src="images/chart.svg"><br>
+            <?php echo h($todaytable['Time']);?><br>
+          <b><a class="a2" href="<?php echo h($url);?>" target="top"><?php echo h($todaytable['Com_Name']);?></a></b><br>
+          <i><?php echo h($todaytable['Sci_Name']);?></i>
+          <a href="<?php echo h($url);?>" target="_blank"><img style="cursor:pointer;float:unset;display:inline" title="<?php echo h($url_title);?>" src="images/info.png" width="20"></a>
+          <a href="https://wikipedia.org/wiki/<?php echo urlencode($sciname);?>" target="_blank"><img style=";cursor:pointer;float:unset;display:inline" title="Wikipedia" src="images/wiki.png" width="20"></a>
+          <img style=";cursor:pointer;float:unset;display:inline" title="View species stats" onclick="generateMiniGraph(this, <?php echo js_arg($todaytable['Com_Name']); ?>)" width=20 src="images/chart.svg"><br>
           <b>Confidence:</b> <?php echo round((float)round($todaytable['Confidence'],2) * 100 ) . '%';?><br></div><br>
-          <div class='custom-audio-player' data-audio-src="<?php echo $filename; ?>" data-image-src="<?php echo $filename.".png";?>"></div>
+          <div class='custom-audio-player' data-audio-src="<?php echo h($filename); ?>" data-image-src="<?php echo h($filename.".png");?>"></div>
           </td>
         <?php } else { //legacy mode ?>
           <tr class="relative" id="<?php echo $iterations; ?>">
-          <td><?php if($_GET['kiosk'] == true) { echo relativeTime(strtotime($todaytable['Time'])); } else {echo $todaytable['Time'];}?><br></td>
+          <td><?php if($_GET['kiosk'] == true) { echo h(relativeTime(strtotime($todaytable['Time']))); } else {echo h($todaytable['Time']);}?><br></td>
           <td id="recent_detection_middle_td">
           <div>
             <div>
             <?php if(!empty($config["IMAGE_PROVIDER"]) && (isset($_GET['hard_limit']) || $_GET['kiosk'] == true) && (isset($image[1]) && strlen($image[1]) > 0)) { ?>
-              <img onerror="this.style.display='none'" style="float:left;height:75px;" onclick='setModalText(<?php echo $iterations; ?>,"<?php echo urlencode($image[2]); ?>", "<?php echo $image[3]; ?>", "<?php echo $image[4]; ?>", "<?php echo $image[1]; ?>", "<?php echo $image[5]; ?>")' src="<?php echo $image[1]; ?>" id="birdimage" class="img1">
+              <img onerror="this.style.display='none'" style="float:left;height:75px;" onclick='setModalText(<?php echo (int)$iterations; ?>, <?php echo js_arg($image[2]); ?>, <?php echo js_arg($image[3]); ?>, <?php echo js_arg($image[4]); ?>, <?php echo js_arg($image[1]); ?>, <?php echo js_arg($image[5]); ?>)' src="<?php echo h($image[1]); ?>" id="birdimage" class="img1">
             <?php } ?>
           </div>
             <div>
             <form action="" method="GET">
                     <input type="hidden" name="view" value="Species Stats">
-          <button class="a2" type="submit" name="species" value="<?php echo $todaytable['Com_Name'];?>"><?php echo $todaytable['Com_Name'];?></button>
+          <button class="a2" type="submit" name="species" value="<?php echo h($todaytable['Com_Name']);?>"><?php echo h($todaytable['Com_Name']);?></button>
 	            <br><i>
-          <?php echo $todaytable['Sci_Name'];?>
+          <?php echo h($todaytable['Sci_Name']);?>
 	                <br>
-	                    <a href="<?php echo $url;?>" target="_blank"><img style="height: 1em;cursor:pointer;float:unset;display:inline" title=<?php echo $url_title;?> src="images/info.png" width="25"></a>
+	                    <a href="<?php echo h($url);?>" target="_blank"><img style="height: 1em;cursor:pointer;float:unset;display:inline" title="<?php echo h($url_title);?>" src="images/info.png" width="25"></a>
       	    <?php if($_GET['kiosk'] == false){?>
-	              <a href="https://wikipedia.org/wiki/<?php echo $sciname;?>" target="_blank"><img style="height: 1em;cursor:pointer;float:unset;display:inline" title="Wikipedia" src="images/wiki.png" width="25"></a>
-	                    <img style="height: 1em;cursor:pointer;float:unset;display:inline" title="View species stats" onclick="generateMiniGraph(this, '<?php echo $comnamegraph; ?>')" width=25 src="images/chart.svg">
-	                    <a target="_blank" href="index.php?filename=<?php echo $todaytable['File_Name']; ?>"><img style="height: 1em;cursor:pointer;float:unset;display:inline" class="copyimage-mobile" title="Open in new tab" width=16 src="images/copy.png"></a>
+	              <a href="https://wikipedia.org/wiki/<?php echo urlencode($sciname);?>" target="_blank"><img style="height: 1em;cursor:pointer;float:unset;display:inline" title="Wikipedia" src="images/wiki.png" width="25"></a>
+	                    <img style="height: 1em;cursor:pointer;float:unset;display:inline" title="View species stats" onclick="generateMiniGraph(this, <?php echo js_arg($todaytable['Com_Name']); ?>)" width=25 src="images/chart.svg">
+	                    <a target="_blank" href="index.php?filename=<?php echo urlencode($todaytable['File_Name']); ?>"><img style="height: 1em;cursor:pointer;float:unset;display:inline" class="copyimage-mobile" title="Open in new tab" width=16 src="images/copy.png"></a>
           	    <?php } ?></i>
 	                <br>
 	            </div>
@@ -263,7 +270,7 @@ if(isset($_GET['ajax_detections']) && $_GET['ajax_detections'] == "true"  ) {
           </td>
           <td><?php if(!isset($_GET['mobile'])) { echo '<b>Confidence:</b>';} echo round((float)round($todaytable['Confidence'],2) * 100 ) . '%';?><br></td>
           <?php if(!isset($_GET['mobile'])) { ?>
-              <td style="min-width:180px"><audio controls preload="none" src="<?php echo $filename;?>"></audio></td>
+              <td style="min-width:180px"><audio controls preload="none" src="<?php echo h($filename);?>"></audio></td>
           <?php } ?>
         <?php } ?>
   <?php }?>
@@ -353,7 +360,7 @@ if (get_included_files()[0] === __FILE__) {
           alert("Database busy.")
         }
       }
-      xhttp.open("GET", "play.php?deletefile="+filename, true);
+      xhttp.open("GET", "play.php?deletefile="+encodeURIComponent(filename), true);
       xhttp.send();
     }
   }
@@ -395,13 +402,32 @@ if (get_included_files()[0] === __FILE__) {
     return shorter;
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function(ch) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[ch];
+    });
+  }
+
+  function safeHttpUrl(url) {
+    try {
+      const parsed = new URL(String(url), window.location.origin);
+      return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '#';
+    } catch (e) {
+      return '#';
+    }
+  }
+
   function setModalText(iter, title, text, authorlink, photolink, licenseurl) {
-    let text_display = shorten(text);
-    let authorlink_display = shorten(authorlink);
-    let licenseurl_display = shorten(licenseurl);
-    document.getElementById('modalHeading').innerHTML = "Photo: \""+decodeURIComponent(title.replaceAll("+"," "))+"\" Attribution";
-    document.getElementById('modalText').innerHTML = "<div><img style='border-radius:5px;max-height: calc(100vh - 15rem);display: block;margin: 0 auto;' src='"+photolink+"'></div><br><div style='white-space:nowrap'>Image link: <a target='_blank' href="+text+">"+text_display+"</a><br>Author link: <a target='_blank' href="+authorlink+">"+authorlink_display+"</a><br>License URL: <a href="+licenseurl+" target='_blank'>"+licenseurl_display+"</a></div>";
-    last_photo_link = text;
+    const safeText = safeHttpUrl(text);
+    const safeAuthor = safeHttpUrl(authorlink);
+    const safePhoto = safeHttpUrl(photolink);
+    const safeLicense = safeHttpUrl(licenseurl);
+    let text_display = shorten(safeText);
+    let authorlink_display = shorten(safeAuthor);
+    let licenseurl_display = shorten(safeLicense);
+    document.getElementById('modalHeading').textContent = "Photo: \""+String(title)+"\" Attribution";
+    document.getElementById('modalText').innerHTML = "<div><img style='border-radius:5px;max-height: calc(100vh - 15rem);display: block;margin: 0 auto;' src='"+escapeHtml(safePhoto)+"'></div><br><div style='white-space:nowrap'>Image link: <a target='_blank' href='"+escapeHtml(safeText)+"'>"+escapeHtml(text_display)+"</a><br>Author link: <a target='_blank' href='"+escapeHtml(safeAuthor)+"'>"+escapeHtml(authorlink_display)+"</a><br>License URL: <a href='"+escapeHtml(safeLicense)+"' target='_blank'>"+escapeHtml(licenseurl_display)+"</a></div>";
+    last_photo_link = safeText;
     showDialog();
   }
   </script>  

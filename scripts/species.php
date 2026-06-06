@@ -294,11 +294,11 @@ if ($image_provider && $image_provider->is_reset()) {
         ?>
             <div class="bird-card">
                 <div class="bird-image-container">
-                    <img src="<?php echo $image_url; ?>" alt="<?php echo $com_name; ?>" class="bird-image" onerror="this.onerror=null; this.src='images/bird.png'">
+                    <img src="<?php echo h($image_url); ?>" alt="<?php echo h($com_name); ?>" class="bird-image" onerror="this.onerror=null; this.src='images/bird.png'">
                 </div>
                 <div class="card-content">
-                    <span class="bird-name"><?php echo $com_name; ?></span>
-                    <span class="bird-sci"><?php echo $sci_name; ?></span>
+                    <span class="bird-name"><?php echo h($com_name); ?></span>
+                    <span class="bird-sci"><?php echo h($sci_name); ?></span>
                     <table class="stats-table">
                         <tr><td>Detections:</td><td><?php echo number_format($bird['Count']); ?></td></tr>
                         <tr><td>Confidence:</td><td><?php echo round($bird['MaxConf'] * 100, 1); ?>%</td></tr>

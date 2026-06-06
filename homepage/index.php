@@ -8,8 +8,8 @@ if (strpos($requestUri, '/api/v1/') === 0) {
 }
 
 /* Prevent XSS input */
-$_GET   = filter_input_array(INPUT_GET, FILTER_SANITIZE_STRING);
-$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_STRING);
+$_GET   = filter_input_array(INPUT_GET, FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?: [];
+$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?: [];
 require_once 'scripts/common.php';
 $config = get_config();
 $site_name = get_sitename();
@@ -44,10 +44,10 @@ if(isset($_GET['filename'])) {
   $filename = $_GET['filename'];
   $query = $_SERVER['QUERY_STRING'];
 echo "
-<iframe src=\"views.php?$query\" allow=\"autoplay\" style=\"position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 1;\"></iframe>";
+<iframe src=\"views.php?" . h($query) . "\" allow=\"autoplay\" style=\"position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 1;\"></iframe>";
 } else {
   $query = $_SERVER['QUERY_STRING'];
   echo "
-<iframe src=\"views.php?$query\" allow=\"autoplay\" style=\"position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 1;\"></iframe>";
+<iframe src=\"views.php?" . h($query) . "\" allow=\"autoplay\" style=\"position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; z-index: 1;\"></iframe>";
 }
 ?>
