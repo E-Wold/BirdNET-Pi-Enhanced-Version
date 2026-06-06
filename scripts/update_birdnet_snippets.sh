@@ -138,6 +138,13 @@ if grep -E '^DATABASE_LANG=zh$' /etc/birdnet/birdnet.conf &>/dev/null;then
   install_language_label.sh
 fi
 
+if [ -f "$HOME/BirdNET-Pi/scripts/birds.db" ]; then
+  sudo_with_user sqlite3 "$HOME/BirdNET-Pi/scripts/birds.db" <<'EOF'
+CREATE INDEX IF NOT EXISTS "detections_Sci_Name_Date" ON "detections" ("Sci_Name", "Date");
+CREATE INDEX IF NOT EXISTS "detections_Date_Sci_Name" ON "detections" ("Date", "Sci_Name");
+EOF
+fi
+
 [ -d $RECS_DIR/StreamData ] || sudo_with_user mkdir -p $RECS_DIR/StreamData
 [ -L ${EXTRACTED}/spectrogram.png ] || sudo_with_user ln -sf ${RECS_DIR}/StreamData/spectrogram.png ${EXTRACTED}/spectrogram.png
 

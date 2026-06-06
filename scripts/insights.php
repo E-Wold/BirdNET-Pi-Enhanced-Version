@@ -21,7 +21,10 @@ $high_conf_count = 0; $med_conf_count = 0; $low_conf_count = 0; $expected_today 
 
 $one_month_ago = date('Y-m-d', strtotime('-30 days'));
 $two_weeks_ago = date('Y-m-d', strtotime('-14 days'));
+$four_weeks_ago = date('Y-m-d', strtotime('-28 days'));
 $today = date('Y-m-d');
+$seasonal_species_limit = request_int($_GET, 'seasonal_limit', 60, 10, 250);
+$migration_list_limit = request_int($_GET, 'list_limit', 100, 10, 500);
 
 if ($subview == 'dashboard') {
     $lifetime_species = $db->querySingle('SELECT COUNT(DISTINCT(Sci_Name)) FROM detections') ?: 0;
@@ -91,30 +94,130 @@ if ($subview == 'behavior') {
 }
 
 if ($subview == 'migration') {
-    $new_arrivals = []; $arrival_res = $db->query("SELECT d.Com_Name, d.Sci_Name, MIN(d.Date) as first_seen, COUNT(*) as cnt FROM detections d WHERE d.Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date < '$two_weeks_ago') AND d.Date >= '$two_weeks_ago' GROUP BY d.Sci_Name ORDER BY first_seen DESC");
+    $arrival_stmt = $db->prepare("
+        WITH recent AS (
+            SELECT Com_Name, Sci_Name, MIN(Date) AS first_seen, COUNT(*) AS cnt
+            FROM detections
+            WHERE Date >= :two_weeks_ago
+            GROUP BY Sci_Name
+        ),
+        previous_window AS (
+            SELECT DISTINCT Sci_Name
+            FROM detections
+            WHERE Date >= :four_weeks_ago AND Date < :two_weeks_ago
+        )
+        SELECT recent.Com_Name, recent.Sci_Name, recent.first_seen, recent.cnt
+        FROM recent
+        LEFT JOIN previous_window prev ON prev.Sci_Name = recent.Sci_Name
+        WHERE prev.Sci_Name IS NULL
+        ORDER BY recent.first_seen DESC
+        LIMIT :limit
+    ");
+    ensure_db_ok($arrival_stmt);
+    $arrival_stmt->bindValue(':two_weeks_ago', $two_weeks_ago, SQLITE3_TEXT);
+    $arrival_stmt->bindValue(':four_weeks_ago', $four_weeks_ago, SQLITE3_TEXT);
+    $arrival_stmt->bindValue(':limit', $migration_list_limit, SQLITE3_INTEGER);
+    $arrival_res = $arrival_stmt->execute();
     while($row = $arrival_res->fetchArray(SQLITE3_ASSOC)) { $new_arrivals[] = $row; }
-    $gone_quiet = []; $quiet_res = $db->query("SELECT Com_Name, Sci_Name, COUNT(*) as total_cnt, MAX(Date) as last_seen FROM detections WHERE Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date >= '$two_weeks_ago') GROUP BY Sci_Name HAVING total_cnt >= 5 ORDER BY last_seen DESC");
+    $quiet_stmt = $db->prepare("
+        SELECT Com_Name, Sci_Name, COUNT(*) AS total_cnt, MAX(Date) AS last_seen
+        FROM detections
+        GROUP BY Sci_Name
+        HAVING COUNT(*) >= 5 AND MAX(Date) < :two_weeks_ago
+        ORDER BY last_seen DESC
+        LIMIT :limit
+    ");
+    ensure_db_ok($quiet_stmt);
+    $quiet_stmt->bindValue(':two_weeks_ago', $two_weeks_ago, SQLITE3_TEXT);
+    $quiet_stmt->bindValue(':limit', $migration_list_limit, SQLITE3_INTEGER);
+    $quiet_res = $quiet_stmt->execute();
     while($row = $quiet_res->fetchArray(SQLITE3_ASSOC)) { $row['days_ago'] = intval((time() - strtotime($row['last_seen'])) / 86400); $gone_quiet[] = $row; }
     $cur_yr = date('Y'); $last_yr = $cur_yr - 1;
-    $yoy_res = $db->query("SELECT a.Com_Name, a.Sci_Name, a.first_this_year, b.first_last_year, CAST(julianday(a.first_this_year) - julianday(b.first_last_year_adjusted) AS INTEGER) as day_diff FROM (SELECT Com_Name, Sci_Name, MIN(Date) as first_this_year FROM detections WHERE strftime('%Y', Date) = '$cur_yr' GROUP BY Sci_Name) a INNER JOIN (SELECT Sci_Name, MIN(Date) as first_last_year, '$cur_yr' || substr(MIN(Date), 5) as first_last_year_adjusted FROM detections WHERE strftime('%Y', Date) = '$last_yr' GROUP BY Sci_Name) b ON a.Sci_Name = b.Sci_Name WHERE day_diff != 0 ORDER BY ABS(day_diff) DESC");
+    $current_year = $cur_yr;
+    $last_year = $last_yr;
+    $cur_year_start = $cur_yr . '-01-01';
+    $next_year_start = ($cur_yr + 1) . '-01-01';
+    $last_year_start = $last_yr . '-01-01';
+    $cur_year_as_last_end = $cur_yr . '-01-01';
+    $yoy_stmt = $db->prepare("
+        WITH this_year AS (
+            SELECT Com_Name, Sci_Name, MIN(Date) AS first_this_year
+            FROM detections
+            WHERE Date >= :cur_year_start AND Date < :next_year_start
+            GROUP BY Sci_Name
+        ),
+        prior_year AS (
+            SELECT Sci_Name, MIN(Date) AS first_last_year,
+                   :cur_yr || substr(MIN(Date), 5) AS first_last_year_adjusted
+            FROM detections
+            WHERE Date >= :last_year_start AND Date < :cur_year_as_last_end
+            GROUP BY Sci_Name
+        ),
+        comparison AS (
+            SELECT this_year.Com_Name, this_year.Sci_Name, this_year.first_this_year, prior_year.first_last_year,
+                   CAST(julianday(this_year.first_this_year) - julianday(prior_year.first_last_year_adjusted) AS INTEGER) AS day_diff
+            FROM this_year
+            INNER JOIN prior_year ON this_year.Sci_Name = prior_year.Sci_Name
+        )
+        SELECT Com_Name, Sci_Name, first_this_year, first_last_year, day_diff
+        FROM comparison
+        WHERE day_diff != 0
+        ORDER BY ABS(day_diff) DESC
+        LIMIT :limit
+    ");
+    ensure_db_ok($yoy_stmt);
+    $yoy_stmt->bindValue(':cur_year_start', $cur_year_start, SQLITE3_TEXT);
+    $yoy_stmt->bindValue(':next_year_start', $next_year_start, SQLITE3_TEXT);
+    $yoy_stmt->bindValue(':last_year_start', $last_year_start, SQLITE3_TEXT);
+    $yoy_stmt->bindValue(':cur_year_as_last_end', $cur_year_as_last_end, SQLITE3_TEXT);
+    $yoy_stmt->bindValue(':cur_yr', (string)$cur_yr, SQLITE3_TEXT);
+    $yoy_stmt->bindValue(':limit', $migration_list_limit, SQLITE3_INTEGER);
+    $yoy_res = $yoy_stmt->execute();
     while($row = $yoy_res->fetchArray(SQLITE3_ASSOC)) { $yoy_comparison[] = $row; }
-    // Generate 48-segment SQL (4 per month)
-    $sql_segments = [];
-    for ($m = 1; $m <= 12; $m++) {
-        $sql_segments[] = "SUM(CASE WHEN CAST(strftime('%m', Date) AS INTEGER) = $m AND CAST(strftime('%d', Date) AS INTEGER) <= 7 THEN 1 ELSE 0 END) as s" . (($m-1)*4 + 1);
-        $sql_segments[] = "SUM(CASE WHEN CAST(strftime('%m', Date) AS INTEGER) = $m AND CAST(strftime('%d', Date) AS INTEGER) BETWEEN 8 AND 14 THEN 1 ELSE 0 END) as s" . (($m-1)*4 + 2);
-        $sql_segments[] = "SUM(CASE WHEN CAST(strftime('%m', Date) AS INTEGER) = $m AND CAST(strftime('%d', Date) AS INTEGER) BETWEEN 15 AND 21 THEN 1 ELSE 0 END) as s" . (($m-1)*4 + 3);
-        $sql_segments[] = "SUM(CASE WHEN CAST(strftime('%m', Date) AS INTEGER) = $m AND CAST(strftime('%d', Date) AS INTEGER) > 21 THEN 1 ELSE 0 END) as s" . (($m-1)*4 + 4);
-    }
-    $seasonal_res = $db->query("SELECT Com_Name, Sci_Name, " . implode(", ", $sql_segments) . ", COUNT(*) as total FROM detections GROUP BY Sci_Name ORDER BY total DESC");
-    
+
+    $seasonal_base = [];
     $seasonal_scis = [];
-    $raw_seasonal = [];
-    while($row = $seasonal_res->fetchArray(SQLITE3_ASSOC)) {
+    $top_species_stmt = $db->prepare("
+        SELECT Com_Name, Sci_Name, COUNT(*) AS total
+        FROM detections
+        GROUP BY Sci_Name
+        ORDER BY total DESC
+        LIMIT :limit
+    ");
+    ensure_db_ok($top_species_stmt);
+    $top_species_stmt->bindValue(':limit', $seasonal_species_limit, SQLITE3_INTEGER);
+    $top_species_res = $top_species_stmt->execute();
+    while($row = $top_species_res->fetchArray(SQLITE3_ASSOC)) {
+        $row['actual_segments'] = array_fill(0, 48, 0);
+        $seasonal_base[$row['Sci_Name']] = $row;
         $seasonal_scis[] = $row['Sci_Name'];
-        $raw_seasonal[] = $row;
     }
-    
+
+    if (!empty($seasonal_scis)) {
+        $escaped_scis = array_map(function($s) use ($db) { return "'" . $db->escapeString($s) . "'"; }, $seasonal_scis);
+        $segments_sql = "
+            SELECT Sci_Name,
+                   ((CAST(strftime('%m', Date) AS INTEGER) - 1) * 4) +
+                   CASE
+                       WHEN CAST(strftime('%d', Date) AS INTEGER) <= 7 THEN 1
+                       WHEN CAST(strftime('%d', Date) AS INTEGER) <= 14 THEN 2
+                       WHEN CAST(strftime('%d', Date) AS INTEGER) <= 21 THEN 3
+                       ELSE 4
+                   END AS segment,
+                   COUNT(*) AS cnt
+            FROM detections
+            WHERE Sci_Name IN (" . implode(',', $escaped_scis) . ")
+            GROUP BY Sci_Name, segment
+        ";
+        $segments_res = $db->query($segments_sql);
+        while($row = $segments_res->fetchArray(SQLITE3_ASSOC)) {
+            $idx = intval($row['segment']) - 1;
+            if (isset($seasonal_base[$row['Sci_Name']]) && $idx >= 0 && $idx < 48) {
+                $seasonal_base[$row['Sci_Name']]['actual_segments'][$idx] = intval($row['cnt']);
+            }
+        }
+    }
+
     // Fetch expected frequencies from Python helper
     $expected_freqs = [];
     if (!empty($seasonal_scis)) {
@@ -125,22 +228,15 @@ if ($subview == 'migration') {
         $expected_freqs = json_decode($output, true) ?: [];
     }
 
-    foreach($raw_seasonal as $row) {
-        $active_segments = 0;
-        $segments_data = [];
-        for ($i=1; $i<=48; $i++) {
-            $val = $row['s'.$i];
-            if ($val > 0) $active_segments++;
-            $segments_data[] = $val;
-        }
+    foreach($seasonal_base as $row) {
+        $active_segments = count(array_filter($row['actual_segments'], function($val) { return $val > 0; }));
         $row['segments_active'] = $active_segments;
         // status based on portion of year present
         $row['status'] = $active_segments >= 36 ? 'Year-round' : ($active_segments >= 12 ? 'Seasonal' : 'Transient');
-        $row['actual_segments'] = $segments_data;
         $row['expected_segments'] = isset($expected_freqs[$row['Sci_Name']]) ? $expected_freqs[$row['Sci_Name']] : array_fill(0, 48, 0.0);
         $seasonal_top[] = $row;
     }
-    $monthly_res = $db->query("SELECT strftime('%Y-%m', Date) as month, COUNT(DISTINCT Sci_Name) as diversity, COUNT(*) as detections FROM detections GROUP BY month ORDER BY month ASC LIMIT 24");
+    $monthly_res = $db->query("SELECT * FROM (SELECT strftime('%Y-%m', Date) as month, COUNT(DISTINCT Sci_Name) as diversity, COUNT(*) as detections FROM detections GROUP BY month ORDER BY month DESC LIMIT 24) ORDER BY month ASC");
     while($row = $monthly_res->fetchArray(SQLITE3_ASSOC)) { $monthly_stats[] = $row; }
     $month_labels = json_encode(array_map(function($r) { return $r['month']; }, $monthly_stats));
     $month_div = json_encode(array_map(function($r) { return $r['diversity']; }, $monthly_stats));
@@ -150,8 +246,12 @@ if ($subview == 'migration') {
     if ($s_counts && $t_30d > 0) { while($r = $s_counts->fetchArray(SQLITE3_ASSOC)) { $pi = $r['cnt'] / $t_30d; $shannon_index -= $pi * log($pi); } }
     $shannon_index = round($shannon_index, 3);
     $diversity_score_text = ($shannon_index > 2.5) ? "Very High" : (($shannon_index > 1.8) ? "High" : (($shannon_index > 1.2) ? "Moderate" : "Low"));
-    $this_month_diversity = $db->querySingle("SELECT COUNT(DISTINCT Sci_Name) FROM detections WHERE strftime('%m', Date) = strftime('%m', 'now') AND strftime('%Y', Date) = strftime('%Y', 'now')") ?: 0;
-    $last_year_diversity = $db->querySingle("SELECT COUNT(DISTINCT Sci_Name) FROM detections WHERE strftime('%m', Date) = strftime('%m', 'now') AND strftime('%Y', Date) = strftime('%Y', 'now', '-1 year')") ?: 0;
+    $this_month_start = date('Y-m-01');
+    $next_month_start = date('Y-m-01', strtotime('+1 month', strtotime($this_month_start)));
+    $last_year_month_start = date('Y-m-01', strtotime('-1 year', strtotime($this_month_start)));
+    $last_year_next_month_start = date('Y-m-01', strtotime('+1 month', strtotime($last_year_month_start)));
+    $this_month_diversity = $db->querySingle("SELECT COUNT(DISTINCT Sci_Name) FROM detections WHERE Date >= '$this_month_start' AND Date < '$next_month_start'") ?: 0;
+    $last_year_diversity = $db->querySingle("SELECT COUNT(DISTINCT Sci_Name) FROM detections WHERE Date >= '$last_year_month_start' AND Date < '$last_year_next_month_start'") ?: 0;
     $yoy_diversity_diff = $this_month_diversity - $last_year_diversity;
 }
 
@@ -878,17 +978,17 @@ $db->close();
             <div class="insights-stats-list">
                 <?php if(empty($new_arrivals)): ?>
                 <div class="insights-stats-item">
-                    <span class="insights-stats-name">No brand-new species in the last 2 weeks</span>
+                    <span class="insights-stats-name">No new or returning species in the last 2 weeks</span>
                     <span class="insights-stats-count">—</span>
                 </div>
                 <?php else: ?>
                 <?php $rank_na = 1; foreach($new_arrivals as $a): ?>
                 <div class="insights-stats-item <?php echo $rank_na > 10 ? 'hidden-item' : ''; ?>">
                     <div>
-                        <div class="insights-stats-name" style="margin-bottom: 2px;"><?php echo $a['Com_Name']; ?></div>
+                        <div class="insights-stats-name" style="margin-bottom: 2px;"><?php echo h($a['Com_Name']); ?></div>
                         <div style="font-size: 0.8em; color: var(--text-muted);">First seen: <?php echo date('M j', strtotime($a['first_seen'])); ?></div>
                     </div>
-                    <span class="insights-stats-count" style="color: #10b981;"><?php echo $a['cnt']; ?> detections</span>
+                    <span class="insights-stats-count" style="color: #10b981;"><?php echo number_format($a['cnt']); ?> detections</span>
                 </div>
                 <?php $rank_na++; endforeach; ?>
                 <?php endif; ?>
@@ -917,8 +1017,8 @@ $db->close();
                 <?php $rank_gq = 1; foreach($gone_quiet as $q): ?>
                 <div class="insights-stats-item <?php echo $rank_gq > 10 ? 'hidden-item' : ''; ?>">
                     <div>
-                        <div class="insights-stats-name" style="margin-bottom: 2px;"><?php echo $q['Com_Name']; ?></div>
-                        <div style="font-size: 0.8em; color: var(--text-muted);"><?php echo $q['total_cnt']; ?> total · Last: <?php echo date('M j', strtotime($q['last_seen'])); ?></div>
+                        <div class="insights-stats-name" style="margin-bottom: 2px;"><?php echo h($q['Com_Name']); ?></div>
+                        <div style="font-size: 0.8em; color: var(--text-muted);"><?php echo number_format($q['total_cnt']); ?> total · Last: <?php echo date('M j', strtotime($q['last_seen'])); ?></div>
                     </div>
                     <span class="insights-stats-count" style="color: #ef4444;"><?php echo $q['days_ago']; ?>d ago</span>
                 </div>
@@ -950,7 +1050,7 @@ $db->close();
             <?php $rank_yoy = 1; foreach($yoy_comparison as $y): ?>
             <div class="insights-stats-item <?php echo $rank_yoy > 10 ? 'hidden-item' : ''; ?>">
                 <div>
-                    <div class="insights-stats-name" style="margin-bottom: 2px;"><?php echo $y['Com_Name']; ?></div>
+                    <div class="insights-stats-name" style="margin-bottom: 2px;"><?php echo h($y['Com_Name']); ?></div>
                     <div style="font-size: 0.8em; color: var(--text-muted);">
                         <?php echo $cur_yr; ?>: <?php echo date('M j', strtotime($y['first_this_year'])); ?>
                         · <?php echo $last_year; ?>: <?php echo date('M j', strtotime($y['first_last_year'])); ?>
@@ -966,7 +1066,7 @@ $db->close();
                         $label = $diff . 'd later';
                     }
                 ?>
-                <span class="insights-stats-count" style="color: <?php echo $color; ?>;"><?php echo $label; ?></span>
+                <span class="insights-stats-count" style="color: <?php echo h($color); ?>;"><?php echo h($label); ?></span>
             </div>
             <?php $rank_yoy++; endforeach; ?>
             <?php endif; ?>
@@ -985,6 +1085,9 @@ $db->close();
     <!-- Seasonal Presence -->
     <section class="insights-section" style="margin-top: 30px;">
         <div class="insights-section-title">🗓️ Seasonal Presence <span class="info-btn">ⓘ<span class="info-tooltip" style="width: 340px;"><strong>Classification Guide:</strong><br>• <strong>Year-round:</strong> Detected across 9+ months<br>• <strong>Seasonal:</strong> Detected across 3-8 months<br>• <strong>Transient:</strong> Detected &lt;3 months<br><br><strong>Data Accuracy Disclaimer:</strong><br>These classifications may be inaccurate if the station has been running for less than a full year, as it lacks seasonal historical context.<br><br>Bar <strong>height</strong> is expected frequency. <strong>Purple highlights</strong> are actual detections.</span></span></div>
+        <?php if(count($seasonal_top) >= $seasonal_species_limit): ?>
+        <div style="font-size: 0.85em; color: var(--text-muted); margin: -4px 0 12px;">Showing the top <?php echo number_format($seasonal_species_limit); ?> detected species by lifetime detections to keep this page responsive.</div>
+        <?php endif; ?>
         <div class="insights-stats-list">
             <?php if(empty($seasonal_top)): ?>
             <div class="insights-stats-item">
@@ -998,10 +1101,10 @@ $db->close();
             <?php $rank_s = 1; foreach($seasonal_top as $s): ?>
             <div class="insights-stats-item <?php echo $rank_s > 10 ? 'hidden-item' : ''; ?>" style="flex-wrap: wrap; gap: 12px; padding: 16px 20px;">
                 <div style="flex: 1 1 220px;">
-                    <div class="insights-stats-name" style="margin-bottom: 4px; font-size: 1.05em;"><?php echo $s['Com_Name']; ?></div>
+                    <div class="insights-stats-name" style="margin-bottom: 4px; font-size: 1.05em;"><?php echo h($s['Com_Name']); ?></div>
                     <div style="font-size: 0.85em; color: var(--text-muted);">
                         <span style="display: inline-block; padding: 2px 8px; background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-light); margin-right: 8px;"><?php echo number_format($s['total']); ?> detections</span>
-                        <span style="color: <?php echo $status_colors[$s['status']]; ?>; font-weight: 700;"><?php echo $s['status']; ?></span>
+                        <span style="color: <?php echo h($status_colors[$s['status']]); ?>; font-weight: 700;"><?php echo h($s['status']); ?></span>
                     </div>
                 </div>
                 <div style="display: flex; flex-direction: column; flex: 1 1 320px; min-width: 280px;">
@@ -1021,7 +1124,7 @@ $db->close();
                                 $week_in_month = ($i % 4) + 1;
                                 $tooltip = $months_names[$month_idx] . " (Seg $week_in_month): " . ($actual > 0 ? $actual . " detections" : "Expected frequency: " . round($expected * 100, 1) . "%");
                             ?>
-                            <div class="seasonal-bar-wrap" title="<?php echo $tooltip; ?>">
+                            <div class="seasonal-bar-wrap" title="<?php echo h($tooltip); ?>">
                                 <div class="seasonal-bar-expected" style="height: <?php echo max(5, $expected * 30); ?>%;"></div>
                                 <div class="seasonal-bar-actual <?php echo $actual > 0 ? 'detected' : ''; ?>" style="height: <?php echo max(5, $expected * 30); ?>%;"></div>
                             </div>
