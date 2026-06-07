@@ -472,7 +472,24 @@ if ($subview == 'environmental') {
         $wind_impact = $unified_wind;
         $ideal_res = $db->query("SELECT d.Com_Name, ROUND(AVG(w.Temp), 1) as avg_temp, ROUND(MIN(w.Temp), 1) as min_temp, ROUND(MAX(w.Temp), 1) as max_temp, COUNT(*) as cnt FROM detections d INNER JOIN weather w ON d.Date = w.Date AND CAST(substr(d.Time, 1, 2) AS INTEGER) = w.Hour GROUP BY d.Sci_Name HAVING cnt >= 5 ORDER BY cnt DESC");
         while($row = $ideal_res->fetchArray(SQLITE3_ASSOC)) { $species_ideal[] = $row; }
-        $trend_res = $db->query("SELECT d.Date, COUNT(*) as det_count, ROUND(AVG(w.Temp), 1) as avg_temp FROM detections d LEFT JOIN weather w ON d.Date = w.Date AND CAST(substr(d.Time, 1, 2) AS INTEGER) = w.Hour WHERE d.Date >= '$one_month_ago' GROUP BY d.Date ORDER BY d.Date ASC");
+        $trend_stmt = $db->prepare("
+            SELECT d.Date,
+                   COUNT(*) as det_count,
+                   ROUND(dw.avg_temp, 1) as avg_temp
+            FROM detections d
+            LEFT JOIN (
+                SELECT Date, AVG(Temp) as avg_temp
+                FROM weather
+                WHERE Temp IS NOT NULL
+                GROUP BY Date
+            ) dw ON dw.Date = d.Date
+            WHERE d.Date >= :one_month_ago
+            GROUP BY d.Date, dw.avg_temp
+            ORDER BY d.Date ASC
+        ");
+        ensure_db_ok($trend_stmt);
+        $trend_stmt->bindValue(':one_month_ago', $one_month_ago, SQLITE3_TEXT);
+        $trend_res = $trend_stmt->execute();
         while($row = $trend_res->fetchArray(SQLITE3_ASSOC)) { $temp_vs_detections[] = $row; }
         $temp_trend_labels = json_encode(array_map(function($r) { return date('M j', strtotime($r['Date'])); }, $temp_vs_detections));
         $temp_trend_temps = json_encode(array_map(function($r) { return $r['avg_temp']; }, $temp_vs_detections));

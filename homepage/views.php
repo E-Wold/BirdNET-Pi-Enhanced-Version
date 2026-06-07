@@ -515,7 +515,7 @@ if(isset($_GET['view'])){
   if($_GET['view'] == "Kiosk"){$kiosk = true;include('todays_detections.php');}
   if($_GET['view'] == "Species Stats"){include('stats.php');}
   if($_GET['view'] == "Weekly Report" || $_GET['view'] == "Report" || $_GET['view'] == "Reports"){include('scripts/reports.php');}
-  if($_GET['view'] == "Insights"){include('insights.php');}
+  if($_GET['view'] == "Insights"){include('scripts/insights.php');}
   if($_GET['view'] == "Analytics"){include('scripts/analytics.php');}
   if($_GET['view'] == "Species"){include('scripts/species.php');}
   if($_GET['view'] == "Daily Charts"){include('history.php');}
