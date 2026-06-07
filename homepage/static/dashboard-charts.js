@@ -39,6 +39,7 @@
         var hourly = data.hourly;
         var currentHour = data.currentHour;
         var weather = data.weather;
+        var hasWeather = weather && Object.keys(weather).length > 0;
 
         var displayed = species;
         var speciesNames = displayed.map(function (s) { return s.name; });
@@ -55,7 +56,7 @@
         var cellWidth = chartWidth / 24;
 
         // Make space for the weather row and the hour header
-        var headerHeight = weather ? 48 : 30;
+        var headerHeight = hasWeather ? 48 : 30;
         var totalHeight = headerHeight + (speciesNames.length * cellHeight) + 4;
 
         // Support High-DPI (Retina) displays for crystal clear text
@@ -127,7 +128,7 @@
             ctx.fillText(label, x, yHour);
 
             // Draw Weather
-            if (weather && weather[h]) {
+            if (hasWeather && weather[h]) {
                 var w = weather[h];
                 var emoji = getWeatherEmoji(w.code, w.is_day);
                 ctx.font = '13px sans-serif'; // Emoji font
@@ -256,6 +257,7 @@
             var species = lastData.species;
             var hourly = lastData.hourly;
             var weather = lastData.weather;
+            var hasWeather = weather && Object.keys(weather).length > 0;
 
             var rect = canvas.getBoundingClientRect();
             // Use client coordinates relative to the bounding box (CSS pixels)
@@ -264,7 +266,7 @@
             var width = rect.width; // Use CSS width
             var labelWidth = Math.min(220, width * 0.35); // Matches renderHeatmap exactly
             var cellWidth = (width - labelWidth - 10) / 24;
-            var headerHeight = weather ? 48 : 30;
+            var headerHeight = hasWeather ? 48 : 30;
             var cellHeight = 32;
 
             var hour = Math.floor((x - labelWidth) / cellWidth);
@@ -298,7 +300,7 @@
                 var name = s.name;
                 var val = (hourly[name] && hourly[name][hour]) ? hourly[name][hour] : 0;
                 var weatherStr = "";
-                if (weather && weather[hour]) {
+                if (hasWeather && weather[hour]) {
                     var w = weather[hour];
                     var codes = { 
                         0: 'Clear', 1: 'Mostly Clear', 2: 'Partly Cloudy', 3: 'Overcast', 
