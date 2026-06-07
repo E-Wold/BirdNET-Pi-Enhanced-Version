@@ -178,7 +178,6 @@ window.addEventListener('load', function(){
     player.addEventListener('loadeddata', startSpectrogram);
     player.addEventListener('playing', startSpectrogram);
     player.addEventListener('play', function() {
-      startSpectrogram();
       if (ACTX && ACTX.state === 'suspended') ACTX.resume();
     });
     player.addEventListener('error', function() {
@@ -186,7 +185,7 @@ window.addEventListener('load', function(){
       if (loading) loading.textContent = 'Live stream unavailable. Check livestream.service and press play to retry.';
     });
     player.load();
-    player.play().then(startSpectrogram).catch(function(e) {
+    player.play().catch(function(e) {
       var loading = document.getElementById('loading-h1');
       if (loading) loading.textContent = 'Press play to start live spectrogram';
       console.log("Autoplay blocked. Tap the player to listen:", e);
@@ -321,7 +320,7 @@ function toggleFreqshift(state) {
         setTimeout(function () {
           console.log("Restarting connection with livestream");
           audio_player.pause();
-          audio_player.setAttribute('src', 'stream');
+          audio_player.setAttribute('src', '/stream');
           audio_player.load();
           audio_player.play();
 
@@ -518,7 +517,7 @@ h1 {
   </div>
 </div>
 
-<audio style="display:none" controls="" crossorigin="anonymous" id='player' preload="none"><source id="playersrc" src="stream"></audio>
+<audio style="display:none" controls="" crossorigin="anonymous" id='player' preload="none"><source id="playersrc" src="/stream"></audio>
 <h1 id="loading-h1">Loading...</h1>
 <canvas></canvas>
 
@@ -555,7 +554,7 @@ if (typeof (rtsp_stream_select) !== 'undefined' && rtsp_stream_select !== null) 
                         //Wait 5 seconds before restarting the stream
                         setTimeout(function () {
                                 audio_player.pause();
-                                audio_player.setAttribute('src', 'stream');
+                                audio_player.setAttribute('src', '/stream');
                                 audio_player.load();
                                 audio_player.play();
 
