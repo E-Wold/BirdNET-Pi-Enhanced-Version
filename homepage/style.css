@@ -283,6 +283,40 @@ textarea:focus-visible {
   background: var(--bg-card);
   box-shadow: var(--shadow-sm);
   text-align: left;
+  position: relative;
+}
+
+.ui-health-item[data-tooltip] {
+  cursor: help;
+}
+
+.ui-health-item[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 10px;
+  top: calc(100% + 8px);
+  z-index: 60;
+  width: min(300px, calc(100vw - 48px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #fff;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.ui-health-item[data-tooltip]:hover::after,
+.ui-health-item[data-tooltip]:focus::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .ui-health-label {

@@ -4,6 +4,7 @@ define('__ROOT__', dirname(dirname(__FILE__)));
 require_once(__ROOT__ . '/scripts/common.php');
 
 $config = get_config();
+set_timezone();
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 

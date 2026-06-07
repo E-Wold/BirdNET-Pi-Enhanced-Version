@@ -58,6 +58,79 @@
     return '<span class="ui-status-pill ui-status-' + escapeHtml(safeStatus) + '">' + escapeHtml(label || status || 'Unknown') + '</span>';
   }
 
+  function fetchJson(url) {
+    var requestUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
+    return fetch(requestUrl, { headers: { 'Accept': 'application/json' } }).then(function (response) {
+      if (!response.ok) throw new Error('Request failed: ' + response.status);
+      return response.json();
+    });
+  }
+
+  function renderHealthItem(label, value, status, tooltip) {
+    var text = String(value == null ? 'Unknown' : value);
+    var tooltipAttr = tooltip ? ' data-tooltip="' + escapeHtml(tooltip) + '"' : '';
+    return '<div class="ui-health-item" tabindex="0" role="group" aria-label="' + escapeHtml(label + ': ' + text + (tooltip ? '. ' + tooltip : '')) + '"' + tooltipAttr + '>' +
+      '<span class="ui-health-label">' + escapeHtml(label) + '</span>' +
+      '<span class="ui-health-value">' + statusPill(status, text) + '</span>' +
+      '</div>';
+  }
+
+  function loadSystemHealth(container) {
+    var strip = typeof container === 'string' ? document.querySelector(container) : container;
+    if (!strip) return Promise.resolve();
+
+    var errorTarget = strip.dataset.errorTarget ? document.querySelector(strip.dataset.errorTarget) : null;
+    var updatedTarget = strip.dataset.updatedTarget ? document.querySelector(strip.dataset.updatedTarget) : null;
+
+    return Promise.all([
+      fetchJson('/api/v1/system/health'),
+      fetchJson('/api/v1/weather/current')
+    ]).then(function (results) {
+      var health = results[0];
+      var weather = results[1];
+      var dbSize = formatBytes(health.database && health.database.size_bytes);
+      var diskUsed = health.disk && health.disk.used_percent !== null ? health.disk.used_percent + '% used' : 'Unknown';
+      var diskTooltip = health.disk && health.disk.total_bytes ?
+        formatBytes(health.disk.free_bytes) + ' free of ' + formatBytes(health.disk.total_bytes) + ' on the BirdNET-Pi home disk.' :
+        'Disk usage could not be read.';
+      var lastDetection = health.last_detection_at || 'No detections';
+      var weatherIsCurrent = weather.status === 'current';
+      var weatherLabel = weatherIsCurrent ? (Math.round(Number(weather.temp)) + '\u00b0F ' + (weather.condition || '')) : 'Missing current hour';
+      var weatherTooltip = weatherIsCurrent ?
+        'Current-hour weather from the weather sync table. This should match Live Activity. Synced row: ' + (weather.last_synced_at || 'unknown') + '.' :
+        'Current-hour weather is missing. Last synced row: ' + (weather.last_synced_at || 'none') + '.';
+
+      strip.innerHTML =
+        renderHealthItem('Recording', health.services.recording.status, health.services.recording.ok ? 'active' : 'inactive', 'Current systemd status for birdnet_recording.service.') +
+        renderHealthItem('Analysis', health.services.analysis.status, health.services.analysis.ok ? 'active' : 'inactive', 'Current systemd status for birdnet_analysis.service.') +
+        renderHealthItem('Disk', diskUsed, health.disk && health.disk.used_percent !== null && health.disk.used_percent > 90 ? 'warning' : 'active', diskTooltip) +
+        renderHealthItem('Database', dbSize, 'complete', 'Current size of scripts/birds.db.') +
+        renderHealthItem('Last Detection', lastDetection, health.last_detection_at ? 'active' : 'warning', 'Newest detection timestamp in the database. This refreshes automatically while this page is open.') +
+        renderHealthItem('Weather', weatherLabel, weatherIsCurrent ? 'current' : 'warning', weatherTooltip);
+
+      if (errorTarget) errorTarget.innerHTML = '';
+      if (updatedTarget) updatedTarget.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }).catch(function () {
+      if (errorTarget) setMessage(errorTarget, 'error', 'Health status unavailable', 'System health details could not be loaded.');
+    });
+  }
+
+  function bindSystemHealth(root) {
+    var scope = root || document;
+    var containers = scope.querySelectorAll('[data-system-health]');
+    containers.forEach(function (container) {
+      if (container.dataset.systemHealthBound === 'true') return;
+      container.dataset.systemHealthBound = 'true';
+      loadSystemHealth(container);
+      var refreshMs = parseInt(container.dataset.refreshMs || '30000', 10);
+      if (refreshMs > 0) {
+        window.setInterval(function () {
+          if (!document.hidden) loadSystemHealth(container);
+        }, refreshMs);
+      }
+    });
+  }
+
   function confirmAction(options) {
     options = options || {};
     if (!document.body || typeof HTMLDialogElement === 'undefined') {
@@ -140,6 +213,7 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     bindPersistedControls(document);
+    bindSystemHealth(document);
   });
 
   window.BirdNETUI = {
@@ -150,6 +224,8 @@
     message: message,
     setMessage: setMessage,
     statusPill: statusPill,
+    loadSystemHealth: loadSystemHealth,
+    bindSystemHealth: bindSystemHealth,
     confirmAction: confirmAction,
     confirmSubmit: confirmSubmit,
     confirmLink: confirmLink,

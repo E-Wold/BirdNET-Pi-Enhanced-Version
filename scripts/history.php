@@ -124,8 +124,9 @@ if (get_included_files()[0] === __FILE__) {
   padding: 0;
   box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
   max-width: 480px;
+  max-height: calc(100vh - 32px);
   width: 90%;
-  overflow: visible;
+  overflow: hidden;
   background: var(--bg-card, #fff);
 }
 #attribution-dialog::backdrop {
@@ -143,11 +144,13 @@ if (get_included_files()[0] === __FILE__) {
   border-top-right-radius: 16px;
 }
 .ebird-dialog-body {
-  padding: 24px;
+  padding: 20px 24px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  overflow: visible; /* Prevent tooltips from being clipped */
+  gap: 14px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .ebird-field {
   display: flex;
@@ -186,7 +189,13 @@ if (get_included_files()[0] === __FILE__) {
 .ebird-actions {
   display: flex;
   gap: 10px;
-  margin-top: 8px;
+  margin-top: 0;
+  padding-top: 12px;
+  padding-bottom: 2px;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-card, #fff);
+  z-index: 2;
 }
 .ebird-btn-submit {
   flex: 1;
@@ -310,6 +319,12 @@ if (get_included_files()[0] === __FILE__) {
   visibility: visible;
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+@media (max-height: 760px) {
+  .ebird-dialog-header { padding: 14px 20px; }
+  .ebird-dialog-body { padding: 14px 20px 12px; gap: 10px; max-height: calc(100vh - 74px); }
+  .ebird-field input,
+  .ebird-field select { padding: 10px 12px; }
 }
 </style>
 

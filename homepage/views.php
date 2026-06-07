@@ -539,6 +539,18 @@ if(isset($_GET['view'])){
             .tools-group button { width: 100%; margin: 6px 0 !important; text-align: left; padding: 10px 15px; font-size: 1.1em; display: flex; justify-content: space-between; align-items: center; }
           </style>
           <div class=\"centered\">
+            <div class=\"tools-system-health\" style=\"max-width:1120px;margin:0 auto 24px;text-align:left;\">
+              <div class=\"ui-section-header\">
+                <h3>System Health</h3>
+                <span id=\"systemHealthUpdated\" class=\"ui-meta\">Loading...</span>
+              </div>
+              <div id=\"systemHealthStrip\" class=\"ui-health-strip\" data-system-health data-refresh-ms=\"30000\" data-updated-target=\"#systemHealthUpdated\" data-error-target=\"#systemHealthError\">
+                <div class=\"ui-health-item\"><span class=\"ui-health-label\">Recording</span><span class=\"ui-health-value\">Loading...</span></div>
+                <div class=\"ui-health-item\"><span class=\"ui-health-label\">Analysis</span><span class=\"ui-health-value\">Loading...</span></div>
+                <div class=\"ui-health-item\"><span class=\"ui-health-label\">Weather</span><span class=\"ui-health-value\">Loading...</span></div>
+              </div>
+              <div id=\"systemHealthError\" style=\"margin-bottom:10px;\"></div>
+            </div>
           <form action=\"index.php\" method=\"GET\" id=\"views\" target=\"_top\">
             <div class=\"tools-grid\">
               <div class=\"tools-group\">

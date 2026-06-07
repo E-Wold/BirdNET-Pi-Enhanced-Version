@@ -121,7 +121,11 @@ if(isset($_GET['legacy']) && $_GET['legacy'] == "true") {
 window.onload = function(){
   var playersrc =  document.getElementById('playersrc');
   playersrc.onerror = function() {
-    window.location="views.php?view=Spectrogram&legacy=true";
+    console.warn("Live stream source reported an error; keeping the live spectrogram view active.");
+    var fallbackPlayer = document.getElementById('player');
+    if (fallbackPlayer) fallbackPlayer.style.display = 'block';
+    var loading = document.getElementById('loading-h1');
+    if (loading) loading.textContent = 'Waiting for live stream...';
   };
 
   // if user agent includes iPhone or Mac use legacy mode

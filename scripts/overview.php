@@ -720,16 +720,6 @@ if (get_included_files()[0] === __FILE__) {
   </style>  
 <div class="overview-stats">
 <div class="right-column">
-<div class="ui-section-header">
-  <h3>System Health</h3>
-  <span id="overviewHealthUpdated" class="ui-meta">Loading...</span>
-</div>
-<div id="overviewHealthStrip" class="ui-health-strip">
-  <div class="ui-health-item"><?php echo '<script>document.write(window.BirdNETUI ? BirdNETUI.skeleton(2) : "Loading...")</script>'; ?></div>
-  <div class="ui-health-item"><?php echo '<script>document.write(window.BirdNETUI ? BirdNETUI.skeleton(2) : "Loading...")</script>'; ?></div>
-  <div class="ui-health-item"><?php echo '<script>document.write(window.BirdNETUI ? BirdNETUI.skeleton(2) : "Loading...")</script>'; ?></div>
-</div>
-<div id="overviewHealthError" style="margin-bottom:10px;"></div>
 <div class="left-column" style="flex: unset; padding-left: 0; margin-bottom: 8px;"></div>
 <div class="center-column">
 </div>
@@ -803,8 +793,6 @@ function loadLeftChart() {
   xhttp.onload = function() {
     if(this.responseText.length > 0 && !this.responseText.includes("Database is busy")) {
       document.getElementsByClassName("left-column")[0].innerHTML = this.responseText;
-      const updated = document.getElementById("overviewHealthUpdated");
-      if (updated) updated.textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
       loadCenterChart();
     }
   }
@@ -883,37 +871,6 @@ function loadFiveMostRecentDetections() {
   }
   xhttp.send();
 }
-function renderOverviewHealthItem(label, value, status) {
-  const safeLabel = window.BirdNETUI ? BirdNETUI.escapeHtml(label) : label;
-  const safeValue = window.BirdNETUI ? BirdNETUI.escapeHtml(value) : value;
-  const pill = window.BirdNETUI && status ? BirdNETUI.statusPill(status, value) : safeValue;
-  return '<div class="ui-health-item"><span class="ui-health-label">' + safeLabel + '</span><span class="ui-health-value">' + pill + '</span></div>';
-}
-function loadOverviewHealth() {
-  const strip = document.getElementById("overviewHealthStrip");
-  if (!strip) return;
-  Promise.all([
-    fetch("/api/v1/system/health").then(r => r.json()),
-    fetch("/api/v1/weather/current").then(r => r.json())
-  ]).then(([health, weather]) => {
-    const dbSize = window.BirdNETUI ? BirdNETUI.formatBytes(health.database.size_bytes) : health.database.size_bytes + " bytes";
-    const diskUsed = health.disk.used_percent === null ? "Unknown" : health.disk.used_percent + "% used";
-    const lastDetection = health.last_detection_at ? health.last_detection_at : "No detections";
-    const weatherLabel = weather.status === "current" ? (weather.temp + "°F " + weather.condition) : (weather.last_synced_at ? "Missing current hour; last " + weather.last_synced_at : "Missing current hour");
-    strip.innerHTML =
-      renderOverviewHealthItem("Recording", health.services.recording.status, health.services.recording.ok ? "active" : "inactive") +
-      renderOverviewHealthItem("Analysis", health.services.analysis.status, health.services.analysis.ok ? "active" : "inactive") +
-      renderOverviewHealthItem("Disk", diskUsed, health.disk.used_percent !== null && health.disk.used_percent > 90 ? "warning" : "active") +
-      renderOverviewHealthItem("Database", dbSize, "complete") +
-      renderOverviewHealthItem("Last Detection", lastDetection, health.last_detection_at ? "active" : "warning") +
-      renderOverviewHealthItem("Weather", weatherLabel, weather.status || "missing");
-    document.getElementById("overviewHealthError").innerHTML = "";
-    const updated = document.getElementById("overviewHealthUpdated");
-    if (updated) updated.textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
-  }).catch(() => {
-    if (window.BirdNETUI) BirdNETUI.setMessage("#overviewHealthError", "error", "Health status unavailable", "System health details could not be loaded.");
-  });
-}
 function refreshCustomImage(){
   // Find the customimage element
   var customimage = document.getElementById("customimage");
@@ -938,7 +895,6 @@ customImage = true;
 customImage = false;
 <?php } ?>
 window.addEventListener("load", function(){
-  loadOverviewHealth();
   loadDetectionIfNewExists();
 });
 document.addEventListener("visibilitychange", function() {
