@@ -126,23 +126,8 @@ if(isset($_GET['ajax_chart_data']) && $_GET['ajax_chart_data'] == "true") {
       $cols = $db->query("PRAGMA table_info(weather)");
       while($c = $cols->fetchArray()) { if($c['name'] == 'IsDay') $hasIsDay = true; }
       $sel = $hasIsDay ? "Hour, Temp, ConditionCode, IsDay" : "Hour, Temp, ConditionCode";
-      $weather_date = $db->querySingle("SELECT Date FROM weather WHERE Date = DATE('now','localtime') AND Temp IS NOT NULL LIMIT 1");
-      if (!$weather_date) {
-          $weather_date = $db->querySingle("
-              SELECT Date
-              FROM (
-                  SELECT DISTINCT Date
-                  FROM weather
-                  WHERE Temp IS NOT NULL
-                    AND Date BETWEEN DATE('now','localtime','-1 day') AND DATE('now','localtime','+1 day')
-              )
-              ORDER BY ABS(julianday(Date) - julianday(DATE('now','localtime')))
-              LIMIT 1
-          ");
-      }
-      $stmt3 = $weather_date ? $db->prepare("SELECT $sel FROM weather WHERE Date = :weather_date ORDER BY Hour ASC") : false;
+      $stmt3 = $db->prepare("SELECT $sel FROM weather WHERE Date = DATE('now','localtime') AND Temp IS NOT NULL ORDER BY Hour ASC");
       if ($stmt3) {
-          $stmt3->bindValue(':weather_date', $weather_date, SQLITE3_TEXT);
           $res3 = $stmt3->execute();
           while ($row = $res3->fetchArray(SQLITE3_ASSOC)) {
               $weather[(int)$row['Hour']] = [
@@ -847,7 +832,7 @@ startAutoRefresh();
 </style>
 <script src="static/custom-audio-player.js"></script>
 <script src="static/generateMiniGraph.js"></script>
-<script src="static/dashboard-charts.js?v=6"></script>
+<script src="static/dashboard-charts.js?v=7"></script>
 <script>if(window.DashboardCharts){DashboardCharts.refresh();}</script>
 <script>
 // Listen for the scroll event on the window object

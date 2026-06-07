@@ -145,6 +145,14 @@ CREATE INDEX IF NOT EXISTS "detections_Date_Sci_Name" ON "detections" ("Date", "
 EOF
 fi
 
+weather_cron_cmd="0 * * * * $USER /home/$USER/BirdNET-Pi/birdnet/bin/python3 /home/$USER/BirdNET-Pi/scripts/utils/weather.py >/dev/null 2>&1"
+if ! grep -F "$weather_cron_cmd" /etc/crontab &>/dev/null; then
+  sed -i '/BirdNET-Pi\/scripts\/utils\/weather.py/d' /etc/crontab
+  echo "#birdnet weather sync" >> /etc/crontab
+  echo "$weather_cron_cmd" >> /etc/crontab
+fi
+sudo_with_user $HOME/BirdNET-Pi/birdnet/bin/python3 $HOME/BirdNET-Pi/scripts/utils/weather.py || true
+
 [ -d $RECS_DIR/StreamData ] || sudo_with_user mkdir -p $RECS_DIR/StreamData
 [ -L ${EXTRACTED}/spectrogram.png ] || sudo_with_user ln -sf ${RECS_DIR}/StreamData/spectrogram.png ${EXTRACTED}/spectrogram.png
 
