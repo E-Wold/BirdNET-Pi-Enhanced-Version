@@ -291,6 +291,42 @@ for homepage_entry in $HOME/BirdNET-Pi/homepage/*; do
   sudo_with_user ln -fsn "$homepage_entry" "${EXTRACTED}/$(basename "$homepage_entry")"
 done
 
+# Data spine tables (Phase 1): reviews, species prefs, notes. Additive only -
+# the detections table is never altered. Keep in sync with createdb.sh and
+# spine_schema_statements() in scripts/common.php.
+sqlite3 $HOME/BirdNET-Pi/scripts/birds.db << EOF
+CREATE TABLE IF NOT EXISTS detection_reviews (
+  id INTEGER PRIMARY KEY,
+  file_name VARCHAR(100) NOT NULL UNIQUE,
+  sci_name VARCHAR(100) NOT NULL,
+  com_name VARCHAR(100) NOT NULL,
+  date DATE NOT NULL,
+  time TIME NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('confirmed','false_positive','hidden','unsure')),
+  reviewed_via TEXT,
+  note TEXT,
+  created_at TEXT DEFAULT (datetime('now','localtime')));
+CREATE INDEX IF NOT EXISTS idx_reviews_sci_status ON detection_reviews(sci_name, status);
+CREATE TABLE IF NOT EXISTS species_prefs (
+  sci_name VARCHAR(100) PRIMARY KEY,
+  com_name VARCHAR(100),
+  favorite INTEGER NOT NULL DEFAULT 0,
+  muted INTEGER NOT NULL DEFAULT 0,
+  notify_mode TEXT NOT NULL DEFAULT 'default',
+  custom_threshold FLOAT,
+  crowned_clip VARCHAR(100),
+  updated_at TEXT DEFAULT (datetime('now','localtime')));
+CREATE TABLE IF NOT EXISTS notes (
+  id INTEGER PRIMARY KEY,
+  date DATE,
+  sci_name VARCHAR(100),
+  file_name VARCHAR(100),
+  body TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now','localtime')));
+CREATE INDEX IF NOT EXISTS idx_notes_date ON notes(date);
+CREATE INDEX IF NOT EXISTS idx_notes_sci ON notes(sci_name);
+EOF
+
 # update snippets above
 
 systemctl daemon-reload

@@ -10,7 +10,15 @@ set_timezone();
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $requestMethod = $_SERVER['REQUEST_METHOD'];
 
-if ($requestMethod !== 'GET') {
+$post_routes = ['#^/api/v1/reviews$#', '#^/api/v1/species/prefs$#', '#^/api/v1/notes$#'];
+$is_post_route = false;
+foreach ($post_routes as $post_pattern) {
+  if (preg_match($post_pattern, $requestUri)) {
+    $is_post_route = true;
+    break;
+  }
+}
+if ($requestMethod !== 'GET' && !($requestMethod === 'POST' && $is_post_route)) {
   sendResponse405();
 }
 
@@ -21,6 +29,109 @@ function api_json($data, $status = 200) {
   http_response_code($status);
   header('Content-Type: application/json');
   echo json_encode($data);
+}
+
+function api_error($message, $status = 400) {
+  api_json(['status' => 'error', 'message' => $message], $status);
+  exit;
+}
+
+function api_require_auth() {
+  if (!is_authenticated()) {
+    header('WWW-Authenticate: Basic realm="BirdNET-Pi"');
+    api_error('Authentication required', 401);
+  }
+  // Lightweight CSRF defense: requiring a custom header forces a CORS
+  // preflight, which a cross-origin page cannot complete. Basic auth alone
+  // would not stop a forged same-network form post.
+  $requested_with = isset($_SERVER['HTTP_X_REQUESTED_WITH']) ? $_SERVER['HTTP_X_REQUESTED_WITH'] : '';
+  if (strcasecmp($requested_with, 'XMLHttpRequest') !== 0) {
+    api_error('Missing X-Requested-With: XMLHttpRequest header', 403);
+  }
+}
+
+function api_request_body() {
+  $content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+  if (stripos($content_type, 'application/json') !== false) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    return is_array($data) ? $data : [];
+  }
+  return $_POST ?: [];
+}
+
+function api_send_csv($filename, $header_row, $rows) {
+  header('Content-Type: text/csv; charset=utf-8');
+  header('Content-Disposition: attachment; filename="' . $filename . '"');
+  $out = fopen('php://output', 'w');
+  fputcsv($out, $header_row);
+  foreach ($rows as $row) {
+    fputcsv($out, $row);
+  }
+  fclose($out);
+  exit;
+}
+
+function api_open_rw_db() {
+  $db_rw = new SQLite3(__ROOT__ . '/scripts/birds.db', SQLITE3_OPEN_READWRITE);
+  $db_rw->busyTimeout(2000);
+  ensure_spine_tables($db_rw);
+  return $db_rw;
+}
+
+function api_clip_relative_for_file($db, $file_name) {
+  $stmt = $db->prepare('SELECT Date, Com_Name FROM detections WHERE File_Name = :f LIMIT 1');
+  if ($stmt === false) {
+    return null;
+  }
+  $stmt->bindValue(':f', $file_name, SQLITE3_TEXT);
+  $row = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'clip relative lookup'));
+  return $row ? detection_clip_relative_path($row['Date'], $row['Com_Name'], $file_name) : null;
+}
+
+function api_current_weather($db) {
+  $has_weather = db_query_single_safe($db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='weather'", 0, 'api current weather table') > 0;
+  if (!$has_weather) {
+    return ['status' => 'missing', 'message' => 'Weather table has not been created yet.'];
+  }
+
+  $has_is_day = false;
+  $cols = db_query_safe($db, "PRAGMA table_info(weather)", 'api weather table info');
+  while ($col = db_fetch_assoc_safe($cols)) {
+    if ($col['name'] === 'IsDay') {
+      $has_is_day = true;
+      break;
+    }
+  }
+
+  $sel = $has_is_day ? 'Date, Hour, Temp, ConditionCode, IsDay' : 'Date, Hour, Temp, ConditionCode';
+  $stmt = $db->prepare("SELECT $sel FROM weather WHERE Date = DATE('now','localtime') AND Hour = :hour AND Temp IS NOT NULL LIMIT 1");
+  $stmt->bindValue(':hour', (int)date('G'), SQLITE3_INTEGER);
+  $current = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'api current weather row'));
+  $latest = db_query_one_safe($db, "SELECT Date, Hour FROM weather WHERE Temp IS NOT NULL ORDER BY Date DESC, Hour DESC LIMIT 1", 'api latest weather row');
+  $today_rows = db_query_single_safe($db, "SELECT COUNT(*) FROM weather WHERE Date = DATE('now','localtime') AND Temp IS NOT NULL", 0, 'api current weather today rows') ?: 0;
+
+  if (!$current) {
+    return [
+      'status' => 'missing',
+      'today_rows' => (int)$today_rows,
+      'last_synced_at' => $latest ? $latest['Date'] . ' ' . sprintf('%02d:00', (int)$latest['Hour']) : null,
+      'message' => 'Current-hour weather is missing.'
+    ];
+  }
+
+  $code = (int)$current['ConditionCode'];
+  return [
+    'status' => 'current',
+    'date' => $current['Date'],
+    'hour' => (int)$current['Hour'],
+    'temp' => round((float)$current['Temp']),
+    'condition_code' => $code,
+    'condition' => api_weather_label($code),
+    'is_day' => $has_is_day ? (int)$current['IsDay'] : 1,
+    'today_rows' => (int)$today_rows,
+    'last_synced_at' => $current['Date'] . ' ' . sprintf('%02d:00', (int)$current['Hour']),
+    'generated_at' => date('c')
+  ];
 }
 
 function api_format_service($service) {
@@ -96,51 +207,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   ]);
 
 } elseif (preg_match('#^/api/v1/weather/current$#', $requestUri)) {
-  $has_weather = db_query_single_safe($db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='weather'", 0, 'api current weather table') > 0;
-  if (!$has_weather) {
-    api_json(['status' => 'missing', 'message' => 'Weather table has not been created yet.']);
-    exit;
-  }
-
-  $has_is_day = false;
-  $cols = db_query_safe($db, "PRAGMA table_info(weather)", 'api weather table info');
-  while ($col = db_fetch_assoc_safe($cols)) {
-    if ($col['name'] === 'IsDay') {
-      $has_is_day = true;
-      break;
-    }
-  }
-
-  $sel = $has_is_day ? 'Date, Hour, Temp, ConditionCode, IsDay' : 'Date, Hour, Temp, ConditionCode';
-  $stmt = $db->prepare("SELECT $sel FROM weather WHERE Date = DATE('now','localtime') AND Hour = :hour AND Temp IS NOT NULL LIMIT 1");
-  $stmt->bindValue(':hour', (int)date('G'), SQLITE3_INTEGER);
-  $current = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'api current weather row'));
-  $latest = db_query_one_safe($db, "SELECT Date, Hour FROM weather WHERE Temp IS NOT NULL ORDER BY Date DESC, Hour DESC LIMIT 1", 'api latest weather row');
-  $today_rows = db_query_single_safe($db, "SELECT COUNT(*) FROM weather WHERE Date = DATE('now','localtime') AND Temp IS NOT NULL", 0, 'api current weather today rows') ?: 0;
-
-  if (!$current) {
-    api_json([
-      'status' => 'missing',
-      'today_rows' => (int)$today_rows,
-      'last_synced_at' => $latest ? $latest['Date'] . ' ' . sprintf('%02d:00', (int)$latest['Hour']) : null,
-      'message' => 'Current-hour weather is missing.'
-    ]);
-    exit;
-  }
-
-  $code = (int)$current['ConditionCode'];
-  api_json([
-    'status' => 'current',
-    'date' => $current['Date'],
-    'hour' => (int)$current['Hour'],
-    'temp' => round((float)$current['Temp']),
-    'condition_code' => $code,
-    'condition' => api_weather_label($code),
-    'is_day' => $has_is_day ? (int)$current['IsDay'] : 1,
-    'today_rows' => (int)$today_rows,
-    'last_synced_at' => $current['Date'] . ' ' . sprintf('%02d:00', (int)$current['Hour']),
-    'generated_at' => date('c')
-  ]);
+  api_json(api_current_weather($db));
 
 } elseif (preg_match('#^/api/v1/species/list$#', $requestUri)) {
   $limit = request_int($_GET, 'limit', 50, 1, 100);
@@ -191,6 +258,14 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
       'wikipedia_url' => 'https://wikipedia.org/wiki/' . str_replace('%20', '_', rawurlencode($row['Sci_Name']))
     ];
   }
+  if (isset($_GET['format']) && $_GET['format'] === 'csv') {
+    $csv_rows = [];
+    foreach ($items as $item) {
+      $csv_rows[] = [$item['common_name'], $item['scientific_name'], $item['detections'], $item['max_confidence'], $item['first_detected']];
+    }
+    api_send_csv('species.csv', ['common_name', 'scientific_name', 'detections', 'max_confidence', 'first_detected'], $csv_rows);
+  }
+
   api_json([
     'items' => $items,
     'count' => count($items),
@@ -468,6 +543,14 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     ];
   }
 
+  if (isset($_GET['format']) && $_GET['format'] === 'csv') {
+    $csv_rows = [];
+    foreach ($data as $d) {
+      $csv_rows[] = [$d['date'], $d['time'], $d['species'], $d['sci_name'], $d['confidence']];
+    }
+    api_send_csv('detections.csv', ['date', 'time', 'species', 'sci_name', 'confidence'], $csv_rows);
+  }
+
   http_response_code(200);
   header('Content-Type: application/json');
   echo json_encode($data);
@@ -475,28 +558,31 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
 } elseif (preg_match('#^/api/v1/detections/timeline$#', $requestUri)) {
   $date = isset($_GET['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
-  $stmt = $db->prepare('SELECT Com_Name, Sci_Name, Confidence, Time, File_Name FROM detections WHERE Date = :date ORDER BY Time ASC');
-  $stmt->bindValue(':date', $date, SQLITE3_TEXT);
-  $result = db_execute_safe($db, $stmt, 'api detections timeline');
+  // Visits are the shared clustering layer (common.php). Each visit is
+  // listed under the hour it started in and may span hour boundaries.
+  $visits = get_visits($db, ['date' => $date, 'include_detections' => true]);
 
-  $all = [];
-  while ($row = db_fetch_assoc_safe($result)) {
-    $all[] = $row;
-  }
-
-  // Group by hour
-  $hours_data = [];
   $total_detections = 0;
   $species_set = [];
-  $hour_counts = [];
+  $hour_counts = array_fill(0, 24, 0);
+  $hours_clusters = [];
 
-  foreach ($all as $det) {
-    $hour = intval(substr($det['Time'], 0, 2));
-    if (!isset($hours_data[$hour])) $hours_data[$hour] = [];
-    $hours_data[$hour][] = $det;
-    $total_detections++;
-    $species_set[$det['Sci_Name']] = true;
-    $hour_counts[$hour] = ($hour_counts[$hour] ?? 0) + 1;
+  foreach ($visits as $v) {
+    $total_detections += $v['count'];
+    $species_set[$v['sci_name']] = true;
+    foreach ($v['detections'] as $d) {
+      $hour_counts[intval(substr($d['time'], 0, 2))]++;
+    }
+    $start_hour = intval(substr($v['first_time'], 0, 2));
+    $hours_clusters[$start_hour][] = [
+      'species' => $v['species'],
+      'sci_name' => $v['sci_name'],
+      'count' => $v['count'],
+      'best_confidence' => $v['best_confidence'],
+      'first_time' => $v['first_time'],
+      'last_time' => $v['last_time'],
+      'detections' => $v['detections']
+    ];
   }
 
   // Find peak hour
@@ -506,62 +592,13 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     if ($c > $peak_count) { $peak_count = $c; $peak_hour = $h; }
   }
 
-  // Cluster same-species detections within 5-minute windows per hour
   $hours_result = [];
   for ($h = 0; $h < 24; $h++) {
-    $dets = $hours_data[$h] ?? [];
-    if (empty($dets)) continue;
-
-    $clusters = [];
-    $used = array_fill(0, count($dets), false);
-
-    for ($i = 0; $i < count($dets); $i++) {
-      if ($used[$i]) continue;
-      $used[$i] = true;
-
-      $cluster_dets = [$dets[$i]];
-      $sci = $dets[$i]['Sci_Name'];
-      $last_time_secs = _time_to_secs($dets[$i]['Time']);
-
-      for ($j = $i + 1; $j < count($dets); $j++) {
-        if ($used[$j]) continue;
-        if ($dets[$j]['Sci_Name'] !== $sci) continue;
-        $t = _time_to_secs($dets[$j]['Time']);
-        if ($t - $last_time_secs <= 300) { // 5 minutes
-          $used[$j] = true;
-          $cluster_dets[] = $dets[$j];
-          $last_time_secs = $t;
-        }
-      }
-
-      // Find best confidence in cluster
-      $best_conf = 0;
-      $det_list = [];
-      foreach ($cluster_dets as $cd) {
-        $conf = round((float)$cd['Confidence'], 4);
-        if ($conf > $best_conf) $best_conf = $conf;
-        $det_list[] = [
-          'time' => $cd['Time'],
-          'confidence' => $conf,
-          'file' => $cd['File_Name']
-        ];
-      }
-
-      $clusters[] = [
-        'species' => $cluster_dets[0]['Com_Name'],
-        'sci_name' => $sci,
-        'count' => count($cluster_dets),
-        'best_confidence' => $best_conf,
-        'first_time' => $cluster_dets[0]['Time'],
-        'last_time' => $cluster_dets[count($cluster_dets) - 1]['Time'],
-        'detections' => $det_list
-      ];
-    }
-
+    if ($hour_counts[$h] === 0 && empty($hours_clusters[$h])) continue;
     $hours_result[] = [
       'hour' => $h,
-      'detection_count' => count($dets),
-      'clusters' => $clusters
+      'detection_count' => $hour_counts[$h],
+      'clusters' => isset($hours_clusters[$h]) ? $hours_clusters[$h] : []
     ];
   }
 
@@ -597,14 +634,707 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   header('Content-Type: application/json');
   echo json_encode($data);
 
+} elseif (preg_match('#^/api/v1/detections/visits$#', $requestUri)) {
+  $options = [];
+  if (isset($_GET['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date'])) {
+    $options['date'] = $_GET['date'];
+  } elseif (isset($_GET['days'])) {
+    $options['days'] = request_int($_GET, 'days', 1, 1, 90);
+  }
+  if (!empty($_GET['species'])) {
+    $options['sci_name'] = $_GET['species'];
+  }
+  if (!empty($_GET['include_detections'])) {
+    $options['include_detections'] = true;
+  }
+  $visits = get_visits($db, $options);
+
+  $files = [];
+  foreach ($visits as $v) {
+    $files[] = $v['best_file'];
+  }
+  $review_map = get_review_map($db, $files);
+  foreach ($visits as $i => $v) {
+    $visits[$i]['review_status'] = isset($review_map[$v['best_file']]) ? $review_map[$v['best_file']] : null;
+  }
+
+  if (isset($_GET['format']) && $_GET['format'] === 'csv') {
+    $csv_rows = [];
+    foreach ($visits as $v) {
+      $csv_rows[] = [$v['date'], $v['first_time'], $v['last_time'], $v['species'], $v['sci_name'], $v['count'], $v['best_confidence'], $v['best_file'], $v['review_status']];
+    }
+    api_send_csv('visits.csv', ['date', 'first_time', 'last_time', 'species', 'sci_name', 'detections', 'best_confidence', 'best_file', 'review_status'], $csv_rows);
+  }
+
+  api_json([
+    'visits' => $visits,
+    'count' => count($visits),
+    'gap_seconds' => get_visit_gap_seconds(),
+    'generated_at' => date('c')
+  ]);
+
+} elseif (preg_match('#^/api/v1/dashboard/now$#', $requestUri)) {
+  $summary = get_summary();
+  $visits_today = get_visits($db, []);
+
+  $latest = null;
+  if (!empty($visits_today)) {
+    $latest = $visits_today[0];
+    foreach ($visits_today as $v) {
+      if (time_to_seconds($v['last_time']) >= time_to_seconds($latest['last_time'])) {
+        $latest = $v;
+      }
+    }
+    $first_stmt = $db->prepare('SELECT MIN(Date) AS first_seen FROM detections WHERE Sci_Name = :sci');
+    $first_stmt->bindValue(':sci', $latest['sci_name'], SQLITE3_TEXT);
+    $first_row = db_fetch_assoc_safe(db_execute_safe($db, $first_stmt, 'now first seen'));
+    $latest['first_seen'] = $first_row ? $first_row['first_seen'] : null;
+    $latest['is_new_lifetime'] = ($latest['first_seen'] === $latest['date']);
+    $latest['visits_last_7_days'] = count(get_visits($db, ['days' => 7, 'sci_name' => $latest['sci_name']]));
+    $latest['clip_path'] = detection_clip_relative_path($latest['date'], $latest['species'], $latest['best_file']);
+  }
+
+  $new_today = [];
+  $new_res = db_query_safe($db, "SELECT Com_Name, Sci_Name, MIN(Time) AS first_time FROM detections WHERE Date = DATE('now','localtime') AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date < DATE('now','localtime')) GROUP BY Sci_Name ORDER BY first_time DESC LIMIT 5", 'now new today');
+  while ($row = db_fetch_assoc_safe($new_res)) {
+    $new_today[] = ['species' => $row['Com_Name'], 'sci_name' => $row['Sci_Name'], 'first_time' => $row['first_time']];
+  }
+
+  if (spine_table_exists($db, 'detection_reviews')) {
+    $review_worthy = (int) db_query_single_safe($db, "SELECT COUNT(*) FROM detections d LEFT JOIN detection_reviews r ON r.file_name = d.File_Name WHERE d.Date = DATE('now','localtime') AND d.Confidence >= 0.60 AND d.Confidence < 0.85 AND r.id IS NULL", 0, 'now review worthy');
+  } else {
+    $review_worthy = (int) db_query_single_safe($db, "SELECT COUNT(*) FROM detections WHERE Date = DATE('now','localtime') AND Confidence >= 0.60 AND Confidence < 0.85", 0, 'now review worthy noband');
+  }
+
+  api_json([
+    'latest_visit' => $latest,
+    'today' => [
+      'detections' => (int)$summary['todaycount'],
+      'species' => (int)$summary['speciestally'],
+      'new_species' => (int)$summary['newspeciestally'],
+      'top_species' => $summary['topspecies'],
+      'top_species_count' => (int)$summary['topspeciescount'],
+      'last_hour' => (int)$summary['hourcount'],
+      'visits' => count($visits_today)
+    ],
+    'lifetime' => [
+      'detections' => (int)$summary['totalcount'],
+      'species' => (int)$summary['totalspeciestally']
+    ],
+    'weather' => api_current_weather($db),
+    'services' => [
+      'recording' => api_format_service('birdnet_recording.service'),
+      'analysis' => api_format_service('birdnet_analysis.service')
+    ],
+    'new_today' => $new_today,
+    'review_worthy' => $review_worthy,
+    'generated_at' => date('c')
+  ]);
+
+} elseif (preg_match('#^/api/v1/species/detail$#', $requestUri)) {
+  $sci = isset($_GET['sci_name']) ? trim($_GET['sci_name']) : '';
+  if ($sci === '') {
+    api_error('sci_name is required');
+  }
+
+  $info_stmt = $db->prepare('SELECT Com_Name, COUNT(*) AS total, MIN(Date) AS first_seen, MAX(Date) AS last_seen, MAX(Confidence) AS best_confidence FROM detections WHERE Sci_Name = :sci');
+  $info_stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+  $info = db_fetch_assoc_safe(db_execute_safe($db, $info_stmt, 'species detail info'));
+  if (!$info || !(int)$info['total']) {
+    api_error('Species not found', 404);
+  }
+
+  $best_stmt = $db->prepare('SELECT Date, Time, Confidence, File_Name FROM detections WHERE Sci_Name = :sci ORDER BY Confidence DESC, Date DESC LIMIT 1');
+  $best_stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+  $best = db_fetch_assoc_safe(db_execute_safe($db, $best_stmt, 'species detail best'));
+
+  $daily = [];
+  $daily_stmt = $db->prepare("SELECT Date, COUNT(*) AS count FROM detections WHERE Sci_Name = :sci AND Date >= DATE('now', 'localtime', '-30 days') GROUP BY Date ORDER BY Date ASC");
+  $daily_stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+  $daily_res = db_execute_safe($db, $daily_stmt, 'species detail daily');
+  while ($row = db_fetch_assoc_safe($daily_res)) {
+    $daily[] = ['date' => $row['Date'], 'count' => (int)$row['count']];
+  }
+
+  $hourly = array_fill(0, 24, 0);
+  $hourly_stmt = $db->prepare('SELECT CAST(strftime("%H", Time) AS INTEGER) AS hour, COUNT(*) AS count FROM detections WHERE Sci_Name = :sci GROUP BY hour');
+  $hourly_stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+  $hourly_res = db_execute_safe($db, $hourly_stmt, 'species detail hourly');
+  while ($row = db_fetch_assoc_safe($hourly_res)) {
+    $hourly[(int)$row['hour']] = (int)$row['count'];
+  }
+
+  $prefs = get_species_prefs_row($db, $sci);
+
+  $precision = null;
+  $review_counts = [];
+  if (spine_table_exists($db, 'detection_reviews')) {
+    $rev_stmt = $db->prepare('SELECT status, COUNT(*) AS count FROM detection_reviews WHERE sci_name = :sci GROUP BY status');
+    $rev_stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+    $rev_res = db_execute_safe($db, $rev_stmt, 'species detail reviews');
+    while ($row = db_fetch_assoc_safe($rev_res)) {
+      $review_counts[$row['status']] = (int)$row['count'];
+    }
+    $confirmed = isset($review_counts['confirmed']) ? $review_counts['confirmed'] : 0;
+    $rejected = isset($review_counts['false_positive']) ? $review_counts['false_positive'] : 0;
+    if ($confirmed + $rejected >= 10) {
+      $precision = round($confirmed / ($confirmed + $rejected), 3);
+    }
+  }
+
+  $recent_visits = array_slice(get_visits($db, ['days' => 7, 'sci_name' => $sci]), -10);
+  foreach ($recent_visits as $i => $v) {
+    $recent_visits[$i]['clip_path'] = detection_clip_relative_path($v['date'], $v['species'], $v['best_file']);
+  }
+
+  $note_count = 0;
+  if (spine_table_exists($db, 'notes')) {
+    $note_count = (int) db_query_single_safe($db, "SELECT COUNT(*) FROM notes WHERE sci_name = '" . SQLite3::escapeString($sci) . "'", 0, 'species detail notes');
+  }
+
+  $info_url = get_info_url($sci);
+  api_json([
+    'common_name' => $info['Com_Name'],
+    'scientific_name' => $sci,
+    'total_detections' => (int)$info['total'],
+    'first_seen' => $info['first_seen'],
+    'last_seen' => $info['last_seen'],
+    'best_confidence' => round((float)$info['best_confidence'], 4),
+    'best_recording' => $best ? [
+      'date' => $best['Date'],
+      'time' => $best['Time'],
+      'confidence' => round((float)$best['Confidence'], 4),
+      'file' => $best['File_Name'],
+      'clip_path' => detection_clip_relative_path($best['Date'], $info['Com_Name'], $best['File_Name'])
+    ] : null,
+    'daily_30d' => $daily,
+    'hourly_pattern' => $hourly,
+    'prefs' => $prefs,
+    'review_counts' => $review_counts,
+    'precision' => $precision,
+    'recent_visits' => $recent_visits,
+    'note_count' => $note_count,
+    'info_url' => $info_url['URL'],
+    'info_title' => $info_url['TITLE'],
+    'wikipedia_url' => 'https://wikipedia.org/wiki/' . str_replace('%20', '_', rawurlencode($sci)),
+    'generated_at' => date('c')
+  ]);
+
+} elseif (preg_match('#^/api/v1/analytics/bundle$#', $requestUri)) {
+  $days = request_int($_GET, 'days', 30, 1, 3650);
+  $bundle_key = birdnet_cache_key('analytics_bundle', $days, date('Y-m-d'), detections_watermark(), filemtime(__FILE__));
+  $cached = birdnet_cache_get($bundle_key);
+  if ($cached !== false) {
+    http_response_code(200);
+    header('Content-Type: application/json');
+    header('X-BirdNET-Cache: hit');
+    echo $cached;
+    exit;
+  }
+
+  $stats_total = (int) db_query_single_safe($db, 'SELECT COUNT(*) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")', 0, 'bundle total');
+  $stats_unique = (int) db_query_single_safe($db, 'SELECT COUNT(DISTINCT(Sci_Name)) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")', 0, 'bundle unique');
+  $stats_avg = (float) db_query_single_safe($db, 'SELECT AVG(Confidence) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")', 0, 'bundle avg conf');
+  $most_common = db_query_one_safe($db, 'SELECT Com_Name, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Sci_Name ORDER BY count DESC LIMIT 1', 'bundle most common');
+
+  $activity = array_fill(0, 24, 0);
+  $act_res = db_query_safe($db, 'SELECT CAST(strftime("%H", Time) AS INTEGER) AS hour, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY hour', 'bundle activity');
+  while ($row = db_fetch_assoc_safe($act_res)) {
+    $activity[(int)$row['hour']] = (int)$row['count'];
+  }
+
+  $daily_dates = [];
+  $daily_counts = [];
+  $daily_res = db_query_safe($db, 'SELECT Date, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Date ORDER BY Date ASC', 'bundle daily');
+  while ($row = db_fetch_assoc_safe($daily_res)) {
+    $daily_dates[] = $row['Date'];
+    $daily_counts[] = (int)$row['count'];
+  }
+
+  $div_dates = [];
+  $div_counts = [];
+  $div_res = db_query_safe($db, 'SELECT Date, COUNT(DISTINCT(Sci_Name)) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Date ORDER BY Date ASC', 'bundle diversity');
+  while ($row = db_fetch_assoc_safe($div_res)) {
+    $div_dates[] = $row['Date'];
+    $div_counts[] = (int)$row['count'];
+  }
+
+  $top = [];
+  $top_res = db_query_safe($db, 'SELECT Com_Name, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Com_Name ORDER BY count DESC LIMIT 10', 'bundle top');
+  while ($row = db_fetch_assoc_safe($top_res)) {
+    $top[] = ['species' => $row['Com_Name'], 'count' => (int)$row['count']];
+  }
+
+  $payload = json_encode([
+    'days' => $days,
+    'stats' => [
+      'total_detections' => $stats_total,
+      'unique_species' => $stats_unique,
+      'avg_confidence' => round($stats_avg * 100, 1),
+      'most_common' => $most_common ? $most_common['Com_Name'] : null,
+      'most_common_count' => $most_common ? (int)$most_common['count'] : 0
+    ],
+    'activity_by_hour' => $activity,
+    'daily' => ['dates' => $daily_dates, 'counts' => $daily_counts],
+    'diversity' => ['dates' => $div_dates, 'counts' => $div_counts],
+    'top_species' => $top,
+    'generated_at' => date('c')
+  ]);
+  birdnet_cache_put($bundle_key, $payload);
+  http_response_code(200);
+  header('Content-Type: application/json');
+  header('X-BirdNET-Cache: miss');
+  echo $payload;
+
+} elseif (preg_match('#^/api/v1/reviews/queue$#', $requestUri)) {
+  $days = request_int($_GET, 'days', 7, 1, 30);
+  $band_min = isset($_GET['band_min']) && is_numeric($_GET['band_min']) ? max(0, min(1, (float)$_GET['band_min'])) : 0.60;
+  $band_max = isset($_GET['band_max']) && is_numeric($_GET['band_max']) ? max(0, min(1, (float)$_GET['band_max'])) : 0.85;
+  $limit = request_int($_GET, 'limit', 50, 1, 200);
+  $offset = request_int($_GET, 'offset', 0, 0, 100000);
+
+  $visits = get_visits($db, ['days' => $days, 'include_detections' => true]);
+
+  $all_files = [];
+  foreach ($visits as $v) {
+    foreach ($v['detections'] as $d) {
+      $all_files[] = $d['file'];
+    }
+  }
+  $review_map = get_review_map($db, $all_files);
+
+  $first_seen_map = [];
+  $fs_res = db_query_safe($db, 'SELECT Sci_Name, MIN(Date) AS first_seen FROM detections GROUP BY Sci_Name', 'queue first seen');
+  while ($row = db_fetch_assoc_safe($fs_res)) {
+    $first_seen_map[$row['Sci_Name']] = $row['first_seen'];
+  }
+
+  $queue = [];
+  foreach ($visits as $v) {
+    $unreviewed = 0;
+    $in_band = false;
+    foreach ($v['detections'] as $d) {
+      if (!isset($review_map[$d['file']])) {
+        $unreviewed++;
+        if ($d['confidence'] >= $band_min && $d['confidence'] < $band_max) {
+          $in_band = true;
+        }
+      }
+    }
+    if ($unreviewed === 0) {
+      continue;
+    }
+    $reasons = [];
+    if ($in_band) {
+      $reasons[] = 'uncertain';
+    }
+    if (isset($first_seen_map[$v['sci_name']]) && $first_seen_map[$v['sci_name']] === $v['date']) {
+      $reasons[] = 'first_lifetime';
+    }
+    if (empty($reasons)) {
+      continue;
+    }
+    unset($v['detections']);
+    $v['unreviewed_count'] = $unreviewed;
+    $v['reasons'] = $reasons;
+    $v['clip_path'] = detection_clip_relative_path($v['date'], $v['species'], $v['best_file']);
+    $queue[] = $v;
+  }
+
+  usort($queue, function ($a, $b) {
+    if ($a['date'] !== $b['date']) {
+      return strcmp($b['date'], $a['date']);
+    }
+    return strcmp($b['last_time'], $a['last_time']);
+  });
+
+  $total = count($queue);
+  $queue = array_slice($queue, $offset, $limit);
+
+  api_json([
+    'queue' => $queue,
+    'count' => count($queue),
+    'total' => $total,
+    'offset' => $offset,
+    'band' => ['min' => $band_min, 'max' => $band_max],
+    'days' => $days,
+    'generated_at' => date('c')
+  ]);
+
+} elseif (preg_match('#^/api/v1/station/doctor$#', $requestUri)) {
+  $home = get_home();
+  $checks = [];
+
+  foreach ([['recording', 'birdnet_recording.service', 'Recording'], ['analysis', 'birdnet_analysis.service', 'Analysis']] as $svc) {
+    $service = api_format_service($svc[1]);
+    $svc_status = $service['ok'] ? 'ok' : ($service['status'] === 'unknown' ? 'warn' : 'error');
+    $checks[] = [
+      'id' => $svc[0] . '_service',
+      'label' => $svc[2] . ' service',
+      'status' => $svc_status,
+      'message' => $service['ok'] ? $svc[2] . ' is running.' : $svc[2] . ' service is ' . $service['status'] . '.',
+      'action' => $service['ok'] ? null : 'Restart it from Tools > Services.'
+    ];
+  }
+
+  $disk_total = @disk_total_space($home);
+  $disk_free = @disk_free_space($home);
+  $used_percent = ($disk_total && $disk_free) ? round((($disk_total - $disk_free) / $disk_total) * 100, 1) : null;
+  $purge_threshold = isset($config['PURGE_THRESHOLD']) && is_numeric($config['PURGE_THRESHOLD']) ? (float)$config['PURGE_THRESHOLD'] : 95;
+  $disk_status = 'ok';
+  if ($used_percent === null) {
+    $disk_status = 'warn';
+  } elseif ($used_percent >= $purge_threshold) {
+    $disk_status = 'error';
+  } elseif ($used_percent >= 80) {
+    $disk_status = 'warn';
+  }
+  $checks[] = [
+    'id' => 'disk',
+    'label' => 'Disk space',
+    'status' => $disk_status,
+    'message' => $used_percent === null ? 'Could not determine disk usage.' : 'Disk is ' . $used_percent . '% full (purge threshold ' . $purge_threshold . '%).',
+    'action' => $disk_status === 'ok' ? null : 'Review old recordings or adjust retention settings.'
+  ];
+
+  $last_detection = db_query_single_safe($db, 'SELECT Date || " " || Time FROM detections ORDER BY Date DESC, Time DESC LIMIT 1', null, 'doctor last detection');
+  $age_hours = $last_detection ? round((time() - strtotime($last_detection)) / 3600, 1) : null;
+  $det_status = 'ok';
+  if ($last_detection === null || ($age_hours !== null && $age_hours > 6)) {
+    $det_status = 'warn';
+  }
+  $checks[] = [
+    'id' => 'last_detection',
+    'label' => 'Last detection',
+    'status' => $det_status,
+    'message' => $last_detection ? 'Last detection ' . $age_hours . 'h ago (' . $last_detection . ').' : 'No detections recorded yet.',
+    'action' => $det_status === 'ok' ? null : 'Quiet periods are normal at night; if this persists in daytime, check the microphone and services.'
+  ];
+
+  $has_weather_table = db_query_single_safe($db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='weather'", 0, 'doctor weather table') > 0;
+  $weather_status = 'warn';
+  $weather_message = 'Weather table has not been created yet.';
+  if ($has_weather_table) {
+    $latest_weather = db_query_one_safe($db, 'SELECT Date, Hour FROM weather WHERE Temp IS NOT NULL ORDER BY Date DESC, Hour DESC LIMIT 1', 'doctor weather');
+    if ($latest_weather) {
+      $weather_age = round((time() - strtotime($latest_weather['Date'] . ' ' . sprintf('%02d:00', (int)$latest_weather['Hour']))) / 3600, 1);
+      $weather_status = $weather_age <= 3 ? 'ok' : 'warn';
+      $weather_message = 'Latest weather data is ' . $weather_age . 'h old.';
+    } else {
+      $weather_message = 'No weather rows synced yet.';
+    }
+  }
+  $checks[] = [
+    'id' => 'weather',
+    'label' => 'Weather sync',
+    'status' => $weather_status,
+    'message' => $weather_message,
+    'action' => $weather_status === 'ok' ? null : 'Weather syncs hourly; check internet connectivity if it stays stale.'
+  ];
+
+  $lat = isset($config['LATITUDE']) ? $config['LATITUDE'] : '';
+  $lon = isset($config['LONGITUDE']) ? $config['LONGITUDE'] : '';
+  $loc_ok = $lat !== '' && $lon !== '' && $lat !== '0.000' && $lon !== '0.000';
+  $checks[] = [
+    'id' => 'location',
+    'label' => 'Location',
+    'status' => $loc_ok ? 'ok' : 'error',
+    'message' => $loc_ok ? 'Latitude and longitude are set.' : 'Latitude/longitude are not set; species range filtering cannot work.',
+    'action' => $loc_ok ? null : 'Set them in Tools > Settings.'
+  ];
+
+  $pwd_ok = !empty($config['CADDY_PWD']);
+  $checks[] = [
+    'id' => 'password',
+    'label' => 'Admin password',
+    'status' => $pwd_ok ? 'ok' : 'warn',
+    'message' => $pwd_ok ? 'An admin password is set.' : 'No admin password is set; anyone on your network can change settings.',
+    'action' => $pwd_ok ? null : 'Set one in Tools > Settings > Advanced Settings.'
+  ];
+
+  $overall = 'ok';
+  foreach ($checks as $c) {
+    if ($c['status'] === 'error') {
+      $overall = 'error';
+      break;
+    }
+    if ($c['status'] === 'warn') {
+      $overall = 'warn';
+    }
+  }
+
+  api_json(['status' => $overall, 'checks' => $checks, 'generated_at' => date('c')]);
+
+} elseif (preg_match('#^/api/v1/reviews$#', $requestUri) && $requestMethod === 'POST') {
+  api_require_auth();
+  $body = api_request_body();
+  $review_status = isset($body['status']) ? $body['status'] : '';
+  $valid_statuses = ['confirmed', 'false_positive', 'hidden', 'unsure', 'clear'];
+  if (!in_array($review_status, $valid_statuses, true)) {
+    api_error('status must be one of: ' . implode(', ', $valid_statuses));
+  }
+  $note = isset($body['note']) ? trim((string)$body['note']) : null;
+  if ($note !== null && mb_strlen($note) > 2000) {
+    api_error('note too long (max 2000 characters)');
+  }
+
+  $targets = [];
+  $via = 'single';
+  if (!empty($body['file_name'])) {
+    $stmt = $db->prepare('SELECT File_Name, Sci_Name, Com_Name, Date, Time FROM detections WHERE File_Name = :f LIMIT 1');
+    $stmt->bindValue(':f', $body['file_name'], SQLITE3_TEXT);
+    $row = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'review target file'));
+    if (!$row) {
+      api_error('Detection not found', 404);
+    }
+    $targets[] = $row;
+  } elseif (!empty($body['visit']) && is_array($body['visit'])) {
+    $vw = $body['visit'];
+    foreach (['sci_name', 'date', 'from_time', 'to_time'] as $k) {
+      if (empty($vw[$k])) {
+        api_error('visit.' . $k . ' is required');
+      }
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $vw['date'])) {
+      api_error('visit.date must be YYYY-MM-DD');
+    }
+    $stmt = $db->prepare('SELECT File_Name, Sci_Name, Com_Name, Date, Time FROM detections WHERE Sci_Name = :sci AND Date = :d AND Time >= :from AND Time <= :to ORDER BY Time ASC');
+    $stmt->bindValue(':sci', $vw['sci_name'], SQLITE3_TEXT);
+    $stmt->bindValue(':d', $vw['date'], SQLITE3_TEXT);
+    $stmt->bindValue(':from', $vw['from_time'], SQLITE3_TEXT);
+    $stmt->bindValue(':to', $vw['to_time'], SQLITE3_TEXT);
+    $result = db_execute_safe($db, $stmt, 'review target visit');
+    while ($row = db_fetch_assoc_safe($result)) {
+      $targets[] = $row;
+    }
+    if (empty($targets)) {
+      api_error('No detections found in that visit window', 404);
+    }
+    $via = 'visit';
+  } else {
+    api_error('Provide file_name or visit {sci_name, date, from_time, to_time}');
+  }
+
+  $db_rw = api_open_rw_db();
+  $affected = 0;
+  if ($review_status === 'clear') {
+    foreach ($targets as $t) {
+      $del = $db_rw->prepare('DELETE FROM detection_reviews WHERE file_name = :f');
+      $del->bindValue(':f', $t['File_Name'], SQLITE3_TEXT);
+      db_execute_safe($db_rw, $del, 'review clear');
+      $affected += $db_rw->changes();
+    }
+  } else {
+    $db_rw->exec('BEGIN');
+    foreach ($targets as $t) {
+      $ins = $db_rw->prepare("INSERT INTO detection_reviews (file_name, sci_name, com_name, date, time, status, reviewed_via, note)
+        VALUES (:f, :sci, :com, :d, :t, :s, :via, :n)
+        ON CONFLICT(file_name) DO UPDATE SET status = :s, reviewed_via = :via, note = :n, created_at = datetime('now','localtime')");
+      $ins->bindValue(':f', $t['File_Name'], SQLITE3_TEXT);
+      $ins->bindValue(':sci', $t['Sci_Name'], SQLITE3_TEXT);
+      $ins->bindValue(':com', $t['Com_Name'], SQLITE3_TEXT);
+      $ins->bindValue(':d', $t['Date'], SQLITE3_TEXT);
+      $ins->bindValue(':t', $t['Time'], SQLITE3_TEXT);
+      $ins->bindValue(':s', $review_status, SQLITE3_TEXT);
+      $ins->bindValue(':via', $via, SQLITE3_TEXT);
+      if ($note === null || $note === '') {
+        $ins->bindValue(':n', null, SQLITE3_NULL);
+      } else {
+        $ins->bindValue(':n', $note, SQLITE3_TEXT);
+      }
+      db_execute_safe($db_rw, $ins, 'review upsert');
+      $affected++;
+    }
+    $db_rw->exec('COMMIT');
+  }
+  $db_rw->close();
+  api_json(['status' => 'ok', 'affected' => $affected, 'review_status' => $review_status, 'via' => $via]);
+
+} elseif (preg_match('#^/api/v1/species/prefs$#', $requestUri) && $requestMethod === 'POST') {
+  api_require_auth();
+  $body = api_request_body();
+  $sci = isset($body['sci_name']) ? trim($body['sci_name']) : '';
+  if ($sci === '') {
+    api_error('sci_name is required');
+  }
+  $stmt = $db->prepare('SELECT Com_Name FROM detections WHERE Sci_Name = :sci LIMIT 1');
+  $stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+  $species_row = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'prefs species lookup'));
+  if (!$species_row) {
+    api_error('Species not found in detections', 404);
+  }
+  $com = $species_row['Com_Name'];
+
+  $db_rw = api_open_rw_db();
+  $existing = get_species_prefs_row($db_rw, $sci) ?: [
+    'favorite' => 0, 'muted' => 0, 'notify_mode' => 'default', 'custom_threshold' => null, 'crowned_clip' => null
+  ];
+
+  $favorite = isset($body['favorite']) ? (int)(bool)$body['favorite'] : (int)$existing['favorite'];
+  $muted = isset($body['muted']) ? (int)(bool)$body['muted'] : (int)$existing['muted'];
+
+  $notify_mode = $existing['notify_mode'];
+  if (isset($body['notify_mode'])) {
+    $valid_modes = ['default', 'every_visit', 'first_daily', 'first_lifetime', 'rare_only', 'never'];
+    if (!in_array($body['notify_mode'], $valid_modes, true)) {
+      api_error('notify_mode must be one of: ' . implode(', ', $valid_modes));
+    }
+    $notify_mode = $body['notify_mode'];
+  }
+
+  $threshold = array_key_exists('custom_threshold', $body)
+    ? (($body['custom_threshold'] === null || $body['custom_threshold'] === '') ? null : (float)$body['custom_threshold'])
+    : ($existing['custom_threshold'] !== null ? (float)$existing['custom_threshold'] : null);
+  if ($threshold !== null && ($threshold < 0 || $threshold > 1)) {
+    api_error('custom_threshold must be between 0 and 1');
+  }
+
+  $crowned = $existing['crowned_clip'];
+  $crown_protected = null;
+  if (array_key_exists('crowned_clip', $body)) {
+    $new_crown = trim((string)($body['crowned_clip'] === null ? '' : $body['crowned_clip']));
+    if ($new_crown === '') {
+      if (!empty($existing['crowned_clip'])) {
+        $old_rel = api_clip_relative_for_file($db, $existing['crowned_clip']);
+        if ($old_rel !== null) {
+          purge_protect_remove($old_rel);
+        }
+      }
+      $crowned = null;
+    } else {
+      $clip_stmt = $db->prepare('SELECT Date, Com_Name FROM detections WHERE File_Name = :f AND Sci_Name = :sci LIMIT 1');
+      $clip_stmt->bindValue(':f', $new_crown, SQLITE3_TEXT);
+      $clip_stmt->bindValue(':sci', $sci, SQLITE3_TEXT);
+      $clip = db_fetch_assoc_safe(db_execute_safe($db, $clip_stmt, 'crown clip lookup'));
+      if (!$clip) {
+        api_error('crowned_clip not found for this species', 404);
+      }
+      if (!empty($existing['crowned_clip']) && $existing['crowned_clip'] !== $new_crown) {
+        $old_rel = api_clip_relative_for_file($db, $existing['crowned_clip']);
+        if ($old_rel !== null) {
+          purge_protect_remove($old_rel);
+        }
+      }
+      $crown_protected = purge_protect_add(detection_clip_relative_path($clip['Date'], $clip['Com_Name'], $new_crown));
+      $crowned = $new_crown;
+    }
+  }
+
+  $up = $db_rw->prepare("INSERT INTO species_prefs (sci_name, com_name, favorite, muted, notify_mode, custom_threshold, crowned_clip, updated_at)
+    VALUES (:sci, :com, :fav, :mut, :nm, :th, :crown, datetime('now','localtime'))
+    ON CONFLICT(sci_name) DO UPDATE SET com_name = :com, favorite = :fav, muted = :mut, notify_mode = :nm, custom_threshold = :th, crowned_clip = :crown, updated_at = datetime('now','localtime')");
+  $up->bindValue(':sci', $sci, SQLITE3_TEXT);
+  $up->bindValue(':com', $com, SQLITE3_TEXT);
+  $up->bindValue(':fav', $favorite, SQLITE3_INTEGER);
+  $up->bindValue(':mut', $muted, SQLITE3_INTEGER);
+  $up->bindValue(':nm', $notify_mode, SQLITE3_TEXT);
+  if ($threshold === null) {
+    $up->bindValue(':th', null, SQLITE3_NULL);
+  } else {
+    $up->bindValue(':th', $threshold, SQLITE3_FLOAT);
+  }
+  if ($crowned === null) {
+    $up->bindValue(':crown', null, SQLITE3_NULL);
+  } else {
+    $up->bindValue(':crown', $crowned, SQLITE3_TEXT);
+  }
+  db_execute_safe($db_rw, $up, 'prefs upsert');
+  $db_rw->close();
+
+  api_json([
+    'status' => 'ok',
+    'prefs' => [
+      'sci_name' => $sci,
+      'com_name' => $com,
+      'favorite' => $favorite,
+      'muted' => $muted,
+      'notify_mode' => $notify_mode,
+      'custom_threshold' => $threshold,
+      'crowned_clip' => $crowned
+    ],
+    'crown_protected' => $crown_protected
+  ]);
+
+} elseif (preg_match('#^/api/v1/notes$#', $requestUri) && $requestMethod === 'POST') {
+  api_require_auth();
+  $body = api_request_body();
+  $action = isset($body['action']) ? $body['action'] : 'create';
+
+  $db_rw = api_open_rw_db();
+  if ($action === 'delete') {
+    $id = isset($body['id']) ? (int)$body['id'] : 0;
+    if ($id <= 0) {
+      api_error('id is required for delete');
+    }
+    $del = $db_rw->prepare('DELETE FROM notes WHERE id = :id');
+    $del->bindValue(':id', $id, SQLITE3_INTEGER);
+    db_execute_safe($db_rw, $del, 'note delete');
+    $deleted = $db_rw->changes();
+    $db_rw->close();
+    api_json(['status' => 'ok', 'deleted' => $deleted]);
+    exit;
+  }
+
+  $text = isset($body['body']) ? trim((string)$body['body']) : '';
+  if ($text === '') {
+    api_error('body is required');
+  }
+  if (mb_strlen($text) > 2000) {
+    api_error('note too long (max 2000 characters)');
+  }
+  $note_date = null;
+  if (!empty($body['date'])) {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $body['date'])) {
+      api_error('date must be YYYY-MM-DD');
+    }
+    $note_date = $body['date'];
+  }
+  $note_sci = !empty($body['sci_name']) ? trim($body['sci_name']) : null;
+  $note_file = !empty($body['file_name']) ? trim($body['file_name']) : null;
+
+  $ins = $db_rw->prepare('INSERT INTO notes (date, sci_name, file_name, body) VALUES (:d, :sci, :f, :b)');
+  if ($note_date === null) { $ins->bindValue(':d', null, SQLITE3_NULL); } else { $ins->bindValue(':d', $note_date, SQLITE3_TEXT); }
+  if ($note_sci === null) { $ins->bindValue(':sci', null, SQLITE3_NULL); } else { $ins->bindValue(':sci', $note_sci, SQLITE3_TEXT); }
+  if ($note_file === null) { $ins->bindValue(':f', null, SQLITE3_NULL); } else { $ins->bindValue(':f', $note_file, SQLITE3_TEXT); }
+  $ins->bindValue(':b', $text, SQLITE3_TEXT);
+  db_execute_safe($db_rw, $ins, 'note insert');
+  $new_id = $db_rw->lastInsertRowID();
+  $db_rw->close();
+  api_json(['status' => 'ok', 'id' => $new_id]);
+
+} elseif (preg_match('#^/api/v1/notes$#', $requestUri)) {
+  if (!spine_table_exists($db, 'notes')) {
+    api_json(['notes' => [], 'count' => 0]);
+    exit;
+  }
+  $limit = request_int($_GET, 'limit', 50, 1, 200);
+  $where = [];
+  $params = [];
+  if (isset($_GET['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date'])) {
+    $where[] = 'date = :date';
+    $params[':date'] = $_GET['date'];
+  }
+  if (!empty($_GET['sci_name'])) {
+    $where[] = 'sci_name = :sci';
+    $params[':sci'] = $_GET['sci_name'];
+  }
+  $sql = 'SELECT id, date, sci_name, file_name, body, created_at FROM notes'
+       . (!empty($where) ? ' WHERE ' . implode(' AND ', $where) : '')
+       . ' ORDER BY created_at DESC LIMIT ' . $limit;
+  $stmt = $db->prepare($sql);
+  foreach ($params as $name => $value) {
+    $stmt->bindValue($name, $value, SQLITE3_TEXT);
+  }
+  $result = db_execute_safe($db, $stmt, 'notes list');
+  $notes = [];
+  while ($row = db_fetch_assoc_safe($result)) {
+    $notes[] = $row;
+  }
+  api_json(['notes' => $notes, 'count' => count($notes)]);
+
 } else {
   http_response_code(404);
   echo json_encode(["status" => "error", "message" => "Error 404! No route found!"]);
-}
-
-function _time_to_secs($time_str) {
-  $parts = explode(':', $time_str);
-  return intval($parts[0]) * 3600 + intval($parts[1]) * 60 + intval($parts[2] ?? 0);
 }
 
 function sendResponse405() {

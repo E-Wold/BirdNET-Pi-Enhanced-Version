@@ -81,6 +81,36 @@ Useful routes for smoke testing:
 - `/?view=Styleguide` — hidden component reference page (light/dark)
 - `/api/v1/detections/recent?limit=3`, `/api/v1/analytics/stats?days=7`
 
+Or run the whole suite (pages, read API, write API guards and round-trips):
+
+```
+BASE=http://127.0.0.1:8123 AUTH=birdnet:devpassword bash tests/smoke_api.sh
+```
+
+## Data-spine API (Phase 1)
+
+Shared layers live in `scripts/common.php` (`get_visits`, `visits_from_detections`,
+review/prefs helpers, purge-protection) with the spine schema in
+`scripts/spine_schema.php` (mirrored in `createdb.sh` and
+`update_birdnet_snippets.sh`).
+
+Read endpoints: `/api/v1/detections/visits` (`?date=|days=|species=|format=csv`),
+`/api/v1/dashboard/now`, `/api/v1/species/detail?sci_name=`,
+`/api/v1/analytics/bundle?days=`, `/api/v1/reviews/queue`, `/api/v1/station/doctor`,
+`/api/v1/notes`.
+
+Write endpoints (HTTP basic auth + `X-Requested-With: XMLHttpRequest` header
+required; the custom header forces a CORS preflight as CSRF protection):
+- `POST /api/v1/reviews` — `{status, note?, file_name}` or
+  `{status, note?, visit:{sci_name,date,from_time,to_time}}`; a visit review
+  fans out to every member detection. `status: clear` removes reviews.
+- `POST /api/v1/species/prefs` — partial update of
+  `{favorite, muted, notify_mode, custom_threshold, crowned_clip}`. Setting
+  `crowned_clip` auto-adds the clip (and its .png) to
+  `disk_check_exclude.txt`; clearing it removes the protection.
+- `POST /api/v1/notes` — `{body, date?, sci_name?, file_name?}` or
+  `{action:"delete", id}`.
+
 ## Notes
 
 - Always lint changed PHP with `php -l` before testing.

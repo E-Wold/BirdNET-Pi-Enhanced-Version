@@ -727,3 +727,220 @@ function birdnet_cache_get($key, $max_age = 21600) {
 function birdnet_cache_put($key, $content) {
   @file_put_contents(birdnet_cache_dir() . '/' . $key . '.cache', $content, LOCK_EX);
 }
+
+/* ===== Data spine (Phase 1): visits, reviews, species prefs, notes =====
+   A "visit" groups successive detections of the same species on the same day
+   when the gap between them stays under VISIT_GAP_MINUTES (default 5).
+   Visits are derived at query time; the detections table is never modified. */
+
+function time_to_seconds($time_str) {
+  $parts = explode(':', (string)$time_str);
+  return intval($parts[0]) * 3600 + intval($parts[1] ?? 0) * 60 + intval($parts[2] ?? 0);
+}
+
+function get_visit_gap_seconds() {
+  $config = get_config();
+  $minutes = 5;
+  if (isset($config['VISIT_GAP_MINUTES']) && is_numeric($config['VISIT_GAP_MINUTES']) && $config['VISIT_GAP_MINUTES'] > 0) {
+    $minutes = (float)$config['VISIT_GAP_MINUTES'];
+  }
+  return (int)round($minutes * 60);
+}
+
+/* $rows must be sorted by Date ASC, Time ASC and contain
+   Date, Time, Sci_Name, Com_Name, Confidence, File_Name. */
+function visits_from_detections($rows, $gap_seconds = null) {
+  if ($gap_seconds === null) {
+    $gap_seconds = get_visit_gap_seconds();
+  }
+  $visits = [];
+  $open = []; // sci_name => index of the currently open visit in $visits
+  foreach ($rows as $row) {
+    $sci = $row['Sci_Name'];
+    $secs = time_to_seconds($row['Time']);
+    $conf = round((float)$row['Confidence'], 4);
+
+    $idx = isset($open[$sci]) ? $open[$sci] : -1;
+    if ($idx >= 0 && ($visits[$idx]['date'] !== $row['Date'] || $secs - $visits[$idx]['last_secs'] > $gap_seconds)) {
+      $idx = -1;
+    }
+    if ($idx < 0) {
+      $visits[] = [
+        'species' => $row['Com_Name'],
+        'sci_name' => $sci,
+        'date' => $row['Date'],
+        'first_time' => $row['Time'],
+        'last_time' => $row['Time'],
+        'count' => 0,
+        'best_confidence' => 0.0,
+        'best_file' => $row['File_Name'],
+        'detections' => [],
+        'last_secs' => $secs
+      ];
+      $idx = count($visits) - 1;
+      $open[$sci] = $idx;
+    }
+    $visits[$idx]['count']++;
+    $visits[$idx]['last_time'] = $row['Time'];
+    $visits[$idx]['last_secs'] = $secs;
+    if ($conf > $visits[$idx]['best_confidence']) {
+      $visits[$idx]['best_confidence'] = $conf;
+      $visits[$idx]['best_file'] = $row['File_Name'];
+    }
+    $visits[$idx]['detections'][] = [
+      'time' => $row['Time'],
+      'confidence' => $conf,
+      'file' => $row['File_Name']
+    ];
+  }
+  foreach ($visits as $i => $v) {
+    unset($visits[$i]['last_secs']);
+  }
+  return $visits;
+}
+
+/* Options: date (Y-m-d) | days (int, capped at 90; default today only),
+   sci_name, include_detections (bool), gap_seconds (int). */
+function get_visits($db, $options = []) {
+  $where = [];
+  $params = [];
+  if (!empty($options['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $options['date'])) {
+    $where[] = 'Date = :date';
+    $params[':date'] = $options['date'];
+  } elseif (!empty($options['days'])) {
+    $days = min(90, max(1, intval($options['days'])));
+    $where[] = "Date >= DATE('now', 'localtime', '-$days days')";
+  } else {
+    $where[] = "Date = DATE('now', 'localtime')";
+  }
+  if (!empty($options['sci_name'])) {
+    $where[] = 'Sci_Name = :sci';
+    $params[':sci'] = $options['sci_name'];
+  }
+  $sql = 'SELECT Date, Time, Sci_Name, Com_Name, Confidence, File_Name FROM detections WHERE '
+       . implode(' AND ', $where) . ' ORDER BY Date ASC, Time ASC';
+  $stmt = $db->prepare($sql);
+  if ($stmt === false) {
+    db_log_error($db, 'get_visits prepare', $sql);
+    return [];
+  }
+  foreach ($params as $name => $value) {
+    $stmt->bindValue($name, $value, SQLITE3_TEXT);
+  }
+  $result = db_execute_safe($db, $stmt, 'get_visits');
+  $rows = [];
+  while ($row = db_fetch_assoc_safe($result)) {
+    $rows[] = $row;
+  }
+  $gap = isset($options['gap_seconds']) ? intval($options['gap_seconds']) : null;
+  $visits = visits_from_detections($rows, $gap);
+  if (empty($options['include_detections'])) {
+    foreach ($visits as $i => $v) {
+      unset($visits[$i]['detections']);
+    }
+  }
+  return $visits;
+}
+
+function ensure_spine_tables($db_rw) {
+  require_once __ROOT__ . '/scripts/spine_schema.php';
+  foreach (spine_schema_statements_standalone() as $sql) {
+    if ($db_rw->exec($sql) === false) {
+      db_log_error($db_rw, 'ensure spine tables', $sql);
+    }
+  }
+}
+
+function spine_table_exists($db, $table) {
+  static $cache = [];
+  if (!isset($cache[$table])) {
+    $cache[$table] = db_query_single_safe($db,
+      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='" . SQLite3::escapeString($table) . "'",
+      0, 'spine table check') > 0;
+  }
+  return $cache[$table];
+}
+
+/* Returns [file_name => status] for the given detection file names. */
+function get_review_map($db, $file_names) {
+  $map = [];
+  if (empty($file_names) || !spine_table_exists($db, 'detection_reviews')) {
+    return $map;
+  }
+  foreach (array_chunk(array_values(array_unique($file_names)), 200) as $chunk) {
+    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+    $stmt = $db->prepare("SELECT file_name, status FROM detection_reviews WHERE file_name IN ($placeholders)");
+    if ($stmt === false) {
+      db_log_error($db, 'review map prepare');
+      return $map;
+    }
+    foreach ($chunk as $i => $name) {
+      $stmt->bindValue($i + 1, $name, SQLITE3_TEXT);
+    }
+    $result = db_execute_safe($db, $stmt, 'review map');
+    while ($row = db_fetch_assoc_safe($result)) {
+      $map[$row['file_name']] = $row['status'];
+    }
+  }
+  return $map;
+}
+
+function get_species_prefs_row($db, $sci_name) {
+  if (!spine_table_exists($db, 'species_prefs')) {
+    return null;
+  }
+  $stmt = $db->prepare('SELECT * FROM species_prefs WHERE sci_name = :sci');
+  if ($stmt === false) {
+    return null;
+  }
+  $stmt->bindValue(':sci', $sci_name, SQLITE3_TEXT);
+  return db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'species prefs row'));
+}
+
+/* ===== Crowned clips: purge protection =====
+   Extracted clips live at By_Date/<date>/<species dir>/<file>; the species
+   dir strips apostrophes and replaces spaces with underscores (classes.py).
+   disk_check.sh / disk_species_clean.sh skip exact lines found in
+   disk_check_exclude.txt, including the clip's .png spectrogram twin. */
+
+function detection_clip_relative_path($date, $com_name, $file_name) {
+  $dir = str_replace("'", '', $com_name);
+  $dir = str_replace(' ', '_', $dir);
+  return $date . '/' . $dir . '/' . $file_name;
+}
+
+function purge_exclude_path() {
+  return __ROOT__ . '/scripts/disk_check_exclude.txt';
+}
+
+function purge_protect_add($relative) {
+  $path = purge_exclude_path();
+  if (!file_exists($path)) {
+    if (@file_put_contents($path, "##start\n##end\n") === false) {
+      return false;
+    }
+  }
+  $lines = @file($path, FILE_IGNORE_NEW_LINES) ?: [];
+  foreach ([$relative, $relative . '.png'] as $entry) {
+    if (!in_array($entry, $lines, true)) {
+      @file_put_contents($path, $entry . "\n", FILE_APPEND);
+    }
+  }
+  return true;
+}
+
+function purge_protect_remove($relative) {
+  $path = purge_exclude_path();
+  if (!file_exists($path)) {
+    return;
+  }
+  $lines = @file($path, FILE_IGNORE_NEW_LINES) ?: [];
+  $keep = [];
+  foreach ($lines as $line) {
+    if ($line === $relative || $line === $relative . '.png') {
+      continue;
+    }
+    $keep[] = $line;
+  }
+  @file_put_contents($path, implode("\n", $keep) . "\n");
+}

@@ -55,6 +55,16 @@ $db->exec('CREATE TABLE IF NOT EXISTS weather (
   WindDirection INT,
   PRIMARY KEY(Date, Hour))');
 
+// Data spine tables (kept in sync with createdb.sh / update_birdnet_snippets.sh).
+// Recreated empty each run so review/prefs/notes tests start from scratch.
+$db->exec('DROP TABLE IF EXISTS detection_reviews');
+$db->exec('DROP TABLE IF EXISTS species_prefs');
+$db->exec('DROP TABLE IF EXISTS notes');
+require_once __DIR__ . '/../scripts/spine_schema.php';
+foreach (spine_schema_statements_standalone() as $spine_sql) {
+  $db->exec($spine_sql);
+}
+
 // [common name, scientific name, relative abundance, dawn-biased?]
 $species = [
   ['Carolina Wren', 'Thryothorus ludovicianus', 10, true],
