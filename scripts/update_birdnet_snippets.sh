@@ -291,6 +291,29 @@ for homepage_entry in $HOME/BirdNET-Pi/homepage/*; do
   sudo_with_user ln -fsn "$homepage_entry" "${EXTRACTED}/$(basename "$homepage_entry")"
 done
 
+# Harden the livestream unit on existing installs: never stop retrying after
+# ALSA underrun crashes, and escalate hung stops to SIGKILL after 10s instead
+# of 90s. Keep in sync with install_livestream_service in install_services.sh.
+if ! grep -q "TimeoutStopSec=10" "$HOME/BirdNET-Pi/templates/livestream.service" 2>/dev/null; then
+  cat << EOF > $HOME/BirdNET-Pi/templates/livestream.service
+[Unit]
+Description=BirdNET-Pi Live Stream
+After=network-online.target
+Requires=network-online.target
+StartLimitIntervalSec=0
+[Service]
+Restart=always
+Type=simple
+RestartSec=3
+TimeoutStopSec=10
+User=${USER}
+ExecStart=/usr/local/bin/livestream.sh
+[Install]
+WantedBy=multi-user.target
+EOF
+  chown $USER:$USER $HOME/BirdNET-Pi/templates/livestream.service
+fi
+
 # Data spine tables (Phase 1): reviews, species prefs, notes. Additive only -
 # the detections table is never altered. Keep in sync with createdb.sh and
 # spine_schema_statements() in scripts/common.php.

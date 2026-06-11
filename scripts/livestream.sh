@@ -41,7 +41,10 @@ elif [[ ! -z ${RTSP_STREAM} ]];then
     ${FREQSHIFT_OPT} \
     -f mp3 icecast://source:${ICE_PWD}@localhost:8000/stream -re
 else
-	ffmpeg -nostdin -loglevel $LOGGING_LEVEL -ac ${CHANNELS} -f alsa -i ${REC_CARD} -acodec libmp3lame \
+	# -thread_queue_size buffers the ALSA input so brief CPU spikes (analysis
+	# bursts) don't underrun the capture and kill ffmpeg with
+	# "cannot recover from underrun / ALSA read error: Broken pipe".
+	ffmpeg -nostdin -loglevel $LOGGING_LEVEL -ac ${CHANNELS} -thread_queue_size 2048 -f alsa -i ${REC_CARD} -acodec libmp3lame \
     -b:a 320k -ac ${CHANNELS} -content_type 'audio/mpeg' \
     ${FREQSHIFT_OPT} \
     -f mp3 icecast://source:${ICE_PWD}@localhost:8000/stream -re

@@ -360,15 +360,22 @@ config_icecast() {
 }
 
 install_livestream_service() {
+  # StartLimitIntervalSec=0: never stop retrying (ffmpeg's ALSA capture can
+  # die on buffer underruns; the service must always come back).
+  # TimeoutStopSec=10: ffmpeg can block inside an ALSA read and ignore
+  # SIGTERM; escalate to SIGKILL quickly instead of hanging stops for 90s.
+  # Keep in sync with the regeneration snippet in update_birdnet_snippets.sh.
   cat << EOF > $HOME/BirdNET-Pi/templates/livestream.service
 [Unit]
 Description=BirdNET-Pi Live Stream
 After=network-online.target
 Requires=network-online.target
+StartLimitIntervalSec=0
 [Service]
 Restart=always
 Type=simple
 RestartSec=3
+TimeoutStopSec=10
 User=${USER}
 ExecStart=/usr/local/bin/livestream.sh
 [Install]
