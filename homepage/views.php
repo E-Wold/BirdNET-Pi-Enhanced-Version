@@ -310,27 +310,37 @@ foreach ($main_nav as $nav_item) {
   }
 
   function refreshLiveFeed() {
-    fetch('api/v1/detections/recent?limit=6&_=' + Date.now(), { headers: { 'Accept': 'application/json' } })
+    // Visit-grouped feed: one row per visit instead of one per detection, so
+    // a chatty bird occupies a single line. Ongoing visits pulse as "now".
+    fetch('api/v1/detections/visits?_=' + Date.now(), { headers: { 'Accept': 'application/json' } })
       .then(r => {
-        if (!r.ok) throw new Error('Recent detections request failed');
+        if (!r.ok) throw new Error('Visits request failed');
         return r.json();
       })
       .then(data => {
         const list = document.getElementById('liveFeedList');
         if (!list) return;
-        if (!data || data.length === 0) {
+        const visits = (data.visits || []).slice();
+        if (visits.length === 0) {
           list.innerHTML = '<li style="padding:12px 0; text-align:center; color: var(--text-secondary, #6b7280);">No detections today yet.</li>';
           return;
         }
-        list.innerHTML = data.map(d => {
-          const pct = Math.round(d.confidence * 100);
+        visits.sort((a, b) => a.seconds_ago - b.seconds_ago);
+        const gap = data.gap_seconds || 300;
+        list.innerHTML = visits.slice(0, 7).map(v => {
+          const pct = Math.round(v.best_confidence * 100);
           let cls = 'low';
           if (pct >= 90) cls = 'high';
           else if (pct >= 75) cls = 'med';
-          return `<li class="feed-item">
-            <span class="feed-species">${d.species}</span>
+          const active = v.seconds_ago <= gap;
+          const when = active
+            ? '<span class="feed-now"><span class="live-dot"></span> now</span>'
+            : v.last_time.slice(0, 5);
+          const count = v.count > 1 ? ' <span class="feed-count">&times;' + v.count + '</span>' : '';
+          return `<li class="feed-item${active ? ' feed-active' : ''}">
+            <span class="feed-species">${v.species}${count}</span>
             <span class="feed-badge ${cls}">${pct}%</span>
-            <span class="feed-time">${d.time}</span>
+            <span class="feed-time">${when}</span>
           </li>`;
         }).join('');
       })
@@ -338,7 +348,7 @@ foreach ($main_nav as $nav_item) {
         const list = document.getElementById('liveFeedList');
         const hasExistingFeed = list && list.querySelector('.feed-item');
         if (list && !hasExistingFeed) {
-          list.innerHTML = '<li style="padding:8px 0;">' + (window.BirdNETUI ? BirdNETUI.message('warning', 'Live feed retrying', 'Recent detections could not be loaded yet.') : 'Live feed retrying.') + '</li>';
+          list.innerHTML = '<li style="padding:8px 0;">' + (window.BirdNETUI ? BirdNETUI.message('warning', 'Live feed retrying', 'Visits could not be loaded yet.') : 'Live feed retrying.') + '</li>';
         }
       });
   }

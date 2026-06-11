@@ -656,6 +656,8 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $review_map = get_review_map($db, $files);
   foreach ($visits as $i => $v) {
     $visits[$i]['review_status'] = isset($review_map[$v['best_file']]) ? $review_map[$v['best_file']] : null;
+    // Server-computed so browser clock or timezone differences can't skew it
+    $visits[$i]['seconds_ago'] = max(0, time() - strtotime($v['date'] . ' ' . $v['last_time']));
   }
 
   if (isset($_GET['format']) && $_GET['format'] === 'csv') {
@@ -692,6 +694,8 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     $latest['is_new_lifetime'] = ($latest['first_seen'] === $latest['date']);
     $latest['visits_last_7_days'] = count(get_visits($db, ['days' => 7, 'sci_name' => $latest['sci_name']]));
     $latest['clip_path'] = detection_clip_relative_path($latest['date'], $latest['species'], $latest['best_file']);
+    // Server-computed so browser clock or timezone differences can't skew it
+    $latest['seconds_ago'] = max(0, time() - strtotime($latest['date'] . ' ' . $latest['last_time']));
   }
 
   $new_today = [];
@@ -700,10 +704,22 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     $new_today[] = ['species' => $row['Com_Name'], 'sci_name' => $row['Sci_Name'], 'first_time' => $row['first_time']];
   }
 
-  if (spine_table_exists($db, 'detection_reviews')) {
-    $review_worthy = (int) db_query_single_safe($db, "SELECT COUNT(*) FROM detections d LEFT JOIN detection_reviews r ON r.file_name = d.File_Name WHERE d.Date = DATE('now','localtime') AND d.Confidence >= 0.60 AND d.Confidence < 0.85 AND r.id IS NULL", 0, 'now review worthy');
-  } else {
-    $review_worthy = (int) db_query_single_safe($db, "SELECT COUNT(*) FROM detections WHERE Date = DATE('now','localtime') AND Confidence >= 0.60 AND Confidence < 0.85", 0, 'now review worthy noband');
+  // Visit-level review count: visits whose BEST detection is in the uncertain
+  // band and not yet reviewed (matches what the Review queue actually shows).
+  $uncertain_best_files = [];
+  foreach ($visits_today as $v) {
+    if ($v['best_confidence'] >= 0.60 && $v['best_confidence'] < 0.85) {
+      $uncertain_best_files[$v['best_file']] = true;
+    }
+  }
+  $review_worthy = 0;
+  if (!empty($uncertain_best_files)) {
+    $reviewed = get_review_map($db, array_keys($uncertain_best_files));
+    foreach ($uncertain_best_files as $file => $unused) {
+      if (!isset($reviewed[$file])) {
+        $review_worthy++;
+      }
+    }
   }
 
   api_json([
@@ -728,6 +744,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     ],
     'new_today' => $new_today,
     'review_worthy' => $review_worthy,
+    'gap_seconds' => get_visit_gap_seconds(),
     'generated_at' => date('c')
   ]);
 
@@ -912,20 +929,18 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $queue = [];
   foreach ($visits as $v) {
     $unreviewed = 0;
-    $in_band = false;
     foreach ($v['detections'] as $d) {
       if (!isset($review_map[$d['file']])) {
         $unreviewed++;
-        if ($d['confidence'] >= $band_min && $d['confidence'] < $band_max) {
-          $in_band = true;
-        }
       }
     }
     if ($unreviewed === 0) {
       continue;
     }
     $reasons = [];
-    if ($in_band) {
+    // Uncertainty is judged at the visit level: a visit whose BEST detection
+    // is confident is not uncertain, even if weaker member detections exist.
+    if ($v['best_confidence'] >= $band_min && $v['best_confidence'] < $band_max && !isset($review_map[$v['best_file']])) {
       $reasons[] = 'uncertain';
     }
     if (isset($first_seen_map[$v['sci_name']]) && $first_seen_map[$v['sci_name']] === $v['date']) {

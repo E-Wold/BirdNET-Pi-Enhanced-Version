@@ -1,19 +1,19 @@
 <?php
-// Live view (Phase 2): streaming spectrogram + live audio + "now hearing"
-// ticker. Full-screen mode doubles as the kiosk display. The spectrogram
-// image is written continuously by the spectrogram_viewer service to
-// /spectrogram.png in the web root.
+// Live view: the realtime streaming spectrogram (the proven Web Audio canvas
+// viewer from spectrogram.php, which draws species labels onto the canvas at
+// the position their song was detected) framed with a large "Now hearing"
+// ticker and a recent-detections list. Full-screen mode doubles as the kiosk
+// display. The embedded viewer brings its own player and gain / compression /
+// frequency-shift controls.
 error_reporting(E_ERROR);
 require_once 'scripts/common.php';
 $config = get_config();
 $site_name = get_sitename();
-$kiosk_mode = isset($_GET['kiosk']) && $_GET['kiosk'];
 ?>
-<div class="live-page<?php echo $kiosk_mode ? ' kiosk' : ''; ?>" id="livePage">
+<div class="live-page" id="livePage">
   <div class="live-header">
     <h2><span class="live-dot" aria-hidden="true"></span> Live at <?php echo h($site_name); ?></h2>
     <div class="live-controls">
-      <button type="button" id="liveAudioBtn" class="live-btn" aria-pressed="false"><?php echo nav_icon('music'); ?> <span>Listen</span></button>
       <button type="button" id="liveFullscreenBtn" class="live-btn"><?php echo nav_icon('grid'); ?> <span>Full screen</span></button>
     </div>
   </div>
@@ -24,23 +24,14 @@ $kiosk_mode = isset($_GET['kiosk']) && $_GET['kiosk'];
     <div class="live-nowhearing-meta" id="liveMeta"></div>
   </div>
 
-  <div class="live-spectrogram ui-card">
-    <img id="liveSpecImg" src="/spectrogram.png" alt="Live audio spectrogram"
-         onerror="this.style.display='none';document.getElementById('liveSpecFallback').style.display='block';">
-    <div id="liveSpecFallback" style="display:none; padding:40px; text-align:center; color: var(--text-secondary);">
-      Live spectrogram is not available right now. The spectrogram service may be stopped
-      &mdash; check <a href="?view=Doctor">Station Doctor</a>.
-    </div>
+  <div class="live-stream-embed ui-card">
+    <?php include('spectrogram.php'); ?>
   </div>
 
   <div class="live-recent ui-card">
     <h3>Recent detections</h3>
     <ul class="feed-list" id="liveRecentList"><li class="visit-empty">Loading&hellip;</li></ul>
   </div>
-
-  <audio id="liveStreamAudio" preload="none" style="display:none;">
-    <source src="/stream">
-  </audio>
 </div>
 
 <script>
@@ -48,31 +39,6 @@ $kiosk_mode = isset($_GET['kiosk']) && $_GET['kiosk'];
   'use strict';
   var esc = window.BirdNETUI ? BirdNETUI.escapeHtml : function (s) { return String(s == null ? '' : s); };
   var lastSeenKey = null;
-
-  // Spectrogram refresh: only while the tab is visible.
-  var img = document.getElementById('liveSpecImg');
-  setInterval(function () {
-    if (document.hidden || img.style.display === 'none') return;
-    img.src = '/spectrogram.png?_=' + Date.now();
-  }, 3000);
-
-  // Audio toggle
-  var audio = document.getElementById('liveStreamAudio');
-  var audioBtn = document.getElementById('liveAudioBtn');
-  audioBtn.addEventListener('click', function () {
-    if (audio.paused) {
-      audio.load();
-      audio.play().catch(function () {});
-      audioBtn.setAttribute('aria-pressed', 'true');
-      audioBtn.classList.add('active');
-      audioBtn.querySelector('span').textContent = 'Stop listening';
-    } else {
-      audio.pause();
-      audioBtn.setAttribute('aria-pressed', 'false');
-      audioBtn.classList.remove('active');
-      audioBtn.querySelector('span').textContent = 'Listen';
-    }
-  });
 
   // Full screen (kiosk) toggle
   document.getElementById('liveFullscreenBtn').addEventListener('click', function () {

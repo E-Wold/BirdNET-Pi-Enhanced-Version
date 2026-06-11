@@ -243,3 +243,30 @@
   color: var(--text-secondary, #6b7280);
   white-space: nowrap;
 }
+
+.feed-count {
+  color: var(--text-secondary, #6b7280);
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+.feed-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success, #10b981);
+  font-weight: 700;
+  font-size: 0.95em;
+}
+
+.feed-now .live-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--success, #10b981);
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+
+.feed-item.feed-active .feed-species {
+  color: var(--text-heading);
+}

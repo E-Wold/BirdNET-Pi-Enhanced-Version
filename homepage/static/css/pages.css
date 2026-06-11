@@ -195,53 +195,36 @@
   color: var(--text-muted);
 }
 
-.now-lower {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: var(--space-4, 16px);
-}
-
-.visit-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.visit-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--border-light, #f1f5f9);
-  font-size: var(--text-sm, 0.85rem);
-}
-
-.visit-item:last-child { border-bottom: none; }
-
-.visit-species {
-  flex: 1;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.visit-range, .visit-count {
-  color: var(--text-secondary);
-  font-size: var(--text-xs, 0.75rem);
-  white-space: nowrap;
-}
-
 .visit-empty {
   color: var(--text-secondary);
   padding: 10px 0;
   list-style: none;
 }
 
+.hero-active {
+  color: var(--success, #10b981);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.visit-info {
+  cursor: help;
+  color: var(--text-muted);
+}
+
+.now-species-hint {
+  margin-left: auto;
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .species-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-3, 12px);
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4, 16px);
 }
 
 .species-card-mini {
@@ -252,7 +235,7 @@
 }
 
 .species-card-photo {
-  height: 90px;
+  height: 150px;
   background: var(--bg-secondary);
   display: flex;
   align-items: center;
@@ -260,10 +243,11 @@
   overflow: hidden;
 }
 
+/* contain (not cover) so the whole bird is always visible */
 .species-card-photo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .species-card-noimg {
@@ -271,10 +255,17 @@
   color: var(--text-muted);
 }
 
+.species-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 4px;
+}
+
 .species-card-name {
   font-weight: 600;
   font-size: var(--text-sm, 0.85rem);
-  padding: 6px 8px 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -283,15 +274,15 @@
 .species-card-stats {
   font-size: var(--text-xs, 0.75rem);
   color: var(--text-secondary);
-  padding: 0 8px 6px;
+  white-space: nowrap;
 }
 
 .spark {
   display: flex;
   align-items: flex-end;
   gap: 1px;
-  height: 22px;
-  padding: 0 8px 8px;
+  height: 30px;
+  padding: 0 10px;
 }
 
 .spark i {
@@ -305,8 +296,41 @@
   opacity: 0.75;
 }
 
+.spark i.future {
+  opacity: 0.35;
+}
+
+/* Hour + weather axis under each card's bars (every 3 hours) */
+.spark-axis {
+  display: flex;
+  padding: 3px 10px 9px;
+}
+
+.axis-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.axis-time {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.axis-weather {
+  font-size: 0.7rem;
+}
+
+.axis-temp {
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 900px) {
-  .now-main, .now-lower {
+  .now-main {
     grid-template-columns: 1fr;
   }
   .now-hero {
@@ -315,6 +339,9 @@
   .hero-photo {
     width: 100%;
     height: 160px;
+  }
+  .species-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -402,18 +429,38 @@
   100% { box-shadow: var(--shadow-sm); }
 }
 
-.live-spectrogram {
-  padding: 0;
+/* Embedded streaming spectrogram viewer (spectrogram.php) */
+.live-stream-embed {
+  padding: var(--space-3, 12px);
   overflow: hidden;
 }
 
-.live-spectrogram img {
+.live-stream-embed canvas {
   display: block;
   width: 100%;
+  height: 440px;
+  background: #000;
+  border-radius: var(--radius, 12px);
+}
+
+.live-stream-embed #loading-h1 {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
+.live-stream-embed .centered {
+  padding: 6px 0;
+}
+
+.live-stream-embed audio#player {
+  width: 100%;
+  margin: 6px 0;
 }
 
 .live-page.kiosk .live-nowhearing-species { font-size: 3.2rem; }
 .live-page.kiosk { background: var(--bg-primary); padding: var(--space-5, 24px); max-width: none; }
+.live-page.kiosk .live-stream-embed canvas { height: 56vh; }
 
 /* ===== Doctor page ===== */
 .doctor-page, .review-page {
