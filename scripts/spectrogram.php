@@ -120,12 +120,27 @@ if(isset($_GET['legacy']) && $_GET['legacy'] == "true") {
 
 window.addEventListener('load', function(){
   var playersrc =  document.getElementById('playersrc');
+  var streamRetries = 0;
   playersrc.onerror = function() {
-    console.warn("Live stream source reported an error; keeping the live spectrogram view active.");
     var fallbackPlayer = document.getElementById('player');
-    if (fallbackPlayer) fallbackPlayer.style.display = 'block';
     var loading = document.getElementById('loading-h1');
-    if (loading) loading.textContent = 'Live stream unavailable. Check livestream.service and press play to retry.';
+    // The icecast stream often takes a few seconds to come back after a
+    // service restart - retry quietly before declaring it unavailable.
+    if (streamRetries < 5) {
+      streamRetries++;
+      console.warn("Live stream source error; retrying (" + streamRetries + "/5) in 5s.");
+      if (loading) loading.textContent = 'Connecting to live stream… (attempt ' + streamRetries + ' of 5)';
+      setTimeout(function () {
+        if (fallbackPlayer) {
+          fallbackPlayer.load();
+          fallbackPlayer.play().catch(function () {});
+        }
+      }, 5000);
+      return;
+    }
+    console.warn("Live stream source reported an error; keeping the live spectrogram view active.");
+    if (fallbackPlayer) fallbackPlayer.style.display = 'block';
+    if (loading) loading.textContent = 'Live stream unavailable. Restart the livestream from Station Doctor, then press play to retry.';
   };
 
   // if user agent includes iPhone or Mac use legacy mode

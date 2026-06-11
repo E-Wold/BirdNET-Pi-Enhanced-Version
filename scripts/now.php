@@ -135,6 +135,7 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
   </section>
 </div>
 
+<script src="static/dashboard-charts.js?v=<?php echo date('n.d.y', @filemtime('static/dashboard-charts.js')); ?>"></script>
 <script>
 (function () {
   'use strict';
@@ -305,57 +306,32 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
     }).join('');
   }
 
-  function renderHeatmapTable(data) {
-    var head = '<tr><th class="hm-species">Species</th>';
-    for (var h = 0; h < 24; h++) {
-      var w = data.weather ? data.weather[h] : null;
-      var nowCls = data.currentHour != null && h === data.currentHour ? ' hm-now' : '';
-      head += '<th class="hm-hour' + nowCls + '"><span class="hm-hour-label">' + hourLabel(h) + '</span>' +
-        (w ? '<span class="hm-weather" aria-hidden="true">' + weatherEmoji(w.code, w.is_day) + '</span>' +
-             '<span class="hm-temp">' + Math.round(w.temp) + '&deg;</span>' : '') +
-        '</th>';
-    }
-    head += '<th class="hm-total">Total</th></tr>';
-
-    var rows = (data.species || []).map(function (s) {
-      var hourly = (data.hourly && data.hourly[s.name]) || {};
-      var max = 1;
-      for (var h = 0; h < 24; h++) {
-        var c = hourly[h] || 0;
-        if (c > max) max = c;
-      }
-      var cells = '';
-      for (var h = 0; h < 24; h++) {
-        var c = hourly[h] || 0;
-        var alpha = c > 0 ? (0.15 + 0.75 * (c / max)) : 0;
-        var nowCls = data.currentHour != null && h === data.currentHour ? ' hm-now' : '';
-        cells += '<td class="hm-cell' + nowCls + '"' +
-          (c > 0 ? ' style="background: rgba(79,70,229,' + alpha.toFixed(2) + ');' + (alpha > 0.55 ? ' color:#fff;' : '') + '"' : '') +
-          ' title="' + esc(s.name) + ' — ' + hourLabel(h) + ' — ' + c + ' detection' + (c === 1 ? '' : 's') + '">' +
-          (c > 0 ? c : '') + '</td>';
-      }
-      return '<tr><td class="hm-species" title="' + esc(s.name) + '">' + esc(s.name) + '</td>' + cells +
-        '<td class="hm-total">' + s.count + '</td></tr>';
-    }).join('');
-
-    return '<table class="species-heatmap"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table>';
-  }
-
   function renderSpecies() {
-    if (!speciesData) return;
     var box = document.getElementById('todaySpeciesContainer');
+    if (speciesView === 'heatmap') {
+      // The heatmap is the original Overview canvas renderer
+      // (static/dashboard-charts.js): bird thumbnails, hover image previews,
+      // rounded cells, weather header, retina scaling. We just give it its
+      // expected elements and let it fetch and draw.
+      box.className = 'heatmap-embed';
+      if (!document.getElementById('hourlyHeatmap')) {
+        box.innerHTML = '<div id="heatmapError" style="margin-bottom:8px;"></div>' +
+          '<div class="chart-canvas-wrapper ui-chart-scroll" style="max-width:100%;"><canvas id="hourlyHeatmap"></canvas></div>';
+      }
+      if (window.DashboardCharts) {
+        DashboardCharts.refresh();
+      }
+      return;
+    }
+    if (!speciesData) {
+      return;
+    }
+    box.className = 'species-grid';
     if (!speciesData.species || speciesData.species.length === 0) {
-      box.className = 'species-grid';
       box.innerHTML = '<div class="visit-empty">No species yet today.</div>';
       return;
     }
-    if (speciesView === 'heatmap') {
-      box.className = 'heatmap-wrap';
-      box.innerHTML = renderHeatmapTable(speciesData);
-    } else {
-      box.className = 'species-grid';
-      box.innerHTML = renderSpeciesGridCards(speciesData);
-    }
+    box.innerHTML = renderSpeciesGridCards(speciesData);
   }
 
   function setSpeciesView(mode) {
@@ -367,6 +343,10 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
     gridBtn.setAttribute('aria-pressed', mode === 'grid' ? 'true' : 'false');
     heatBtn.classList.toggle('active', mode === 'heatmap');
     heatBtn.setAttribute('aria-pressed', mode === 'heatmap' ? 'true' : 'false');
+    if (mode === 'grid' && !speciesData) {
+      refreshSpeciesGrid();
+      return;
+    }
     renderSpecies();
   }
 
@@ -377,6 +357,13 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
   }
 
   function refreshSpeciesGrid() {
+    if (speciesView === 'heatmap') {
+      // The heatmap renderer fetches its own data and redraws.
+      if (window.DashboardCharts && document.getElementById('hourlyHeatmap')) {
+        DashboardCharts.refresh();
+      }
+      return;
+    }
     fetch('overview.php?ajax_chart_data=true&_=' + Date.now(), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { if (!r.ok) throw new Error('grid failed'); return r.json(); })
       .then(function (data) {

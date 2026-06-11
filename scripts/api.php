@@ -992,6 +992,20 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     ];
   }
 
+  // Live stream is a feature rather than core capture, so problems are warn-level
+  $livestream = api_format_service('livestream.service');
+  $icecast = api_format_service('icecast2.service');
+  $stream_ok = $livestream['ok'] && $icecast['ok'];
+  $checks[] = [
+    'id' => 'livestream',
+    'label' => 'Live stream',
+    'status' => $stream_ok ? 'ok' : 'warn',
+    'message' => $stream_ok
+      ? 'Live audio stream is running.'
+      : 'Live stream: livestream.service is ' . $livestream['status'] . ', icecast2 is ' . $icecast['status'] . '.',
+    'action' => $stream_ok ? null : 'Use "Restart livestream" in the Station Doctor quick fixes.'
+  ];
+
   $disk_total = @disk_total_space($home);
   $disk_free = @disk_free_space($home);
   $used_percent = ($disk_total && $disk_free) ? round((($disk_total - $disk_free) / $disk_total) * 100, 1) : null;

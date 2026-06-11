@@ -67,6 +67,7 @@ if (isset($_GET['support_bundle']) && $_GET['support_bundle'] == 'true') {
     <div class="doctor-fix-buttons">
       <a class="ui-button-link" href="index.php?submit=<?php echo rawurlencode('sudo systemctl restart birdnet_recording.service'); ?>">Restart recording</a>
       <a class="ui-button-link" href="index.php?submit=<?php echo rawurlencode('sudo systemctl restart birdnet_analysis.service'); ?>">Restart analysis</a>
+      <a class="ui-button-link" href="index.php?submit=<?php echo rawurlencode('sudo systemctl restart livestream.service && sudo systemctl restart icecast2.service'); ?>">Restart livestream</a>
       <a class="ui-button-link" href="index.php?submit=<?php echo rawurlencode('restart_services.sh'); ?>">Restart core services</a>
       <button type="button" class="ui-button-link" id="syncWeatherBtn">Sync weather now</button>
       <button type="button" class="ui-button-link" id="supportBundleBtn">Support bundle</button>
