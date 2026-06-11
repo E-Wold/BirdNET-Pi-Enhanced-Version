@@ -247,7 +247,9 @@
 .feed-count {
   color: var(--text-secondary, #6b7280);
   font-weight: 400;
-  font-size: 0.85em;
+  font-size: 0.75em;
+  flex-shrink: 0; /* the count survives even when a long name truncates */
+  margin-left: 2px;
 }
 
 .feed-now {

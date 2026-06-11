@@ -336,9 +336,9 @@ foreach ($main_nav as $nav_item) {
           const when = active
             ? '<span class="feed-now"><span class="live-dot"></span> now</span>'
             : v.last_time.slice(0, 5);
-          const count = v.count > 1 ? ' <span class="feed-count">&times;' + v.count + '</span>' : '';
           return `<li class="feed-item${active ? ' feed-active' : ''}">
-            <span class="feed-species">${v.species}${count}</span>
+            <span class="feed-species">${v.species}</span>
+            <span class="feed-count">&times;${v.count}</span>
             <span class="feed-badge ${cls}">${pct}%</span>
             <span class="feed-time">${when}</span>
           </li>`;
@@ -378,7 +378,8 @@ foreach ($main_nav as $nav_item) {
     refreshLiveFeed();
     refreshLiveWeather();
     refreshHealthPill();
-    setInterval(refreshLiveFeed, 30000);
+    // 10s keeps the sidebar in step with the Live page's "Now hearing" ticker
+    setInterval(refreshLiveFeed, 10000);
     setInterval(refreshLiveWeather, 60000);
     setInterval(refreshHealthPill, 30000);
   });

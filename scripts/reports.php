@@ -396,7 +396,7 @@ if (isset($_GET['ascii'])) {
     <div class="kpi-cards">
         <div class="kpi-card">
             <span class="kpi-val"><?php echo number_format($total_detections); ?></span>
-            <span class="kpi-label">Total Detections <?php echo get_trend_html($total_detections, $prior_total); ?> <span class="info-btn">ⓘ<span class="info-tooltip">Total number of bird sounds identified during this <?php echo $type; ?> period.</span></span></span>
+            <span class="kpi-label">Total Detections <?php echo get_trend_html($total_detections, $prior_total); ?> <span class="info-btn">i<span class="info-tooltip">Total number of bird sounds identified during this <?php echo $type; ?> period.</span></span></span>
         </div>
         <div class="kpi-card">
             <span class="kpi-val"><?php echo number_format($daily_avg); ?></span>
@@ -404,7 +404,7 @@ if (isset($_GET['ascii'])) {
         </div>
         <div class="kpi-card">
             <span class="kpi-val"><?php echo number_format($unique_species); ?></span>
-            <span class="kpi-label">Unique Species <?php echo get_trend_html($unique_species, $prior_species); ?> <span class="info-btn">ⓘ<span class="info-tooltip">Number of different bird species identified in this period.</span></span></span>
+            <span class="kpi-label">Unique Species <?php echo get_trend_html($unique_species, $prior_species); ?> <span class="info-btn">i<span class="info-tooltip">Number of different bird species identified in this period.</span></span></span>
         </div>
         <div class="kpi-card">
             <span class="kpi-val"><?php echo $busiest_day_name; ?></span>
@@ -418,7 +418,7 @@ if (isset($_GET['ascii'])) {
 
     <div class="sections-grid">
         <section class="report-section">
-            <div class="section-title">🏆 Top Species <span class="info-btn">ⓘ<span class="info-tooltip">The most frequently detected species of the period, ranked by total count.</span></span></div>
+            <div class="section-title">🏆 Top Species <span class="info-btn">i<span class="info-tooltip">The most frequently detected species of the period, ranked by total count.</span></span></div>
             <ul class="report-list">
                 <?php
                 $rank = 1;
@@ -448,7 +448,7 @@ if (isset($_GET['ascii'])) {
         </section>
 
         <section class="report-section">
-            <div class="section-title">✨ First Time Seen <span class="info-btn">ⓘ<span class="info-tooltip">Species that were detected this period but have NO record in the system before this period started.</span></span></div>
+            <div class="section-title">✨ First Time Seen <span class="info-btn">i<span class="info-tooltip">Species that were detected this period but have NO record in the system before this period started.</span></span></div>
             <ul class="report-list">
                 <?php
                 $new_count = 0;

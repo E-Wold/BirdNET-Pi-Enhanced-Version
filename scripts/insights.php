@@ -883,14 +883,14 @@ $db->close();
                     <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="<?php echo $yard_health_score >= 80 ? '#10b981' : ($yard_health_score >= 50 ? '#f59e0b' : '#ef4444'); ?>" stroke-width="2.5" stroke-dasharray="<?php echo $yard_health_score; ?>, 100" stroke-linecap="round" transition="stroke-dasharray 1s ease" />
                 </svg>
                 <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-                    <div style="font-size: 2.2em; font-weight: 900; color: var(--text-heading); line-height: 1;"><?php echo $yard_health_score; ?><span class="info-btn">ⓘ<span class="info-tooltip">A weighted index (0-100) calculated from station stability, detection volume, species rarity, and biodiversity.</span></span></div>
+                    <div style="font-size: 2.2em; font-weight: 900; color: var(--text-heading); line-height: 1;"><?php echo $yard_health_score; ?><span class="info-btn">i<span class="info-tooltip">A weighted index (0-100) calculated from station stability, detection volume, species rarity, and biodiversity.</span></span></div>
                     <div style="font-size: 0.7em; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-top: 4px;">Yard Score</div>
                 </div>
             </div>
 
             <!-- Recommendations -->
             <div style="flex: 1 1 300px;">
-                <h3 style="margin: 0 0 15px; font-size: 1.3em; color: var(--text-heading);">🏡 Habitat Insights & Recommendations <span class="info-btn">ⓘ<span class="info-tooltip" style="width: 300px;"><strong>Diagnostic Scan Results:</strong><br><br>• <strong>Diversity</strong>: Shannon Index (Variety & Evenness)<br>• <strong>Stability</strong>: Active vs Quiet days (last 30d)<br>• <strong>Quality</strong>: High vs Low confidence detections<br>• <strong>Activity</strong>: Current vs Recent history trends<br><br>Yard Health is a weighted average of these 4 pillars.</span></span></h3>
+                <h3 style="margin: 0 0 15px; font-size: 1.3em; color: var(--text-heading);">🏡 Habitat Insights & Recommendations <span class="info-btn">i<span class="info-tooltip" style="width: 300px;"><strong>Diagnostic Scan Results:</strong><br><br>• <strong>Diversity</strong>: Shannon Index (Variety & Evenness)<br>• <strong>Stability</strong>: Active vs Quiet days (last 30d)<br>• <strong>Quality</strong>: High vs Low confidence detections<br>• <strong>Activity</strong>: Current vs Recent history trends<br><br>Yard Health is a weighted average of these 4 pillars.</span></span></h3>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <?php foreach($recommendations as $rec): ?>
                     <div style="display: flex; gap: 15px; align-items: center; background: var(--bg-card); padding: 12px 18px; border-radius: 12px; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm);">
@@ -905,7 +905,7 @@ $db->close();
 
     <div class="insights-kpi-cards">
         <div class="insights-kpi-card">
-            <span class="insights-kpi-val"><?php echo number_format($lifetime_species); ?><span class="info-btn">ⓘ<span class="info-tooltip">The total count of unique bird species identified since station installation.</span></span></span>
+            <span class="insights-kpi-val"><?php echo number_format($lifetime_species); ?><span class="info-btn">i<span class="info-tooltip">The total count of unique bird species identified since station installation.</span></span></span>
             <span class="insights-kpi-label">Lifetime Species</span>
         </div>
         <div class="insights-kpi-card">
@@ -917,7 +917,7 @@ $db->close();
             <span class="insights-kpi-label">Longest Streak</span>
         </div>
         <div class="insights-kpi-card">
-            <span class="insights-kpi-val"><?php echo number_format($rare_total); ?><span class="info-btn">ⓘ<span class="info-tooltip">Species with fewer than 5 total detections at your station since installation.</span></span></span>
+            <span class="insights-kpi-val"><?php echo number_format($rare_total); ?><span class="info-btn">i<span class="info-tooltip">Species with fewer than 5 total detections at your station since installation.</span></span></span>
             <span class="insights-kpi-label">Rare Species</span>
         </div>
     </div>
@@ -936,7 +936,7 @@ $db->close();
         </section>
 
         <section class="insights-section">
-            <div class="insights-section-title">💎 Rarest Detections (&lt; 5 ever) <span class="info-btn">ⓘ<span class="info-tooltip">These species are vagrants or potential misidentifications that have appeared very infrequently at your station.</span></span></div>
+            <div class="insights-section-title">💎 Rarest Detections (&lt; 5 ever) <span class="info-btn">i<span class="info-tooltip">These species are vagrants or potential misidentifications that have appeared very infrequently at your station.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($rarest)): ?>
                 <div class="insights-stats-item">
@@ -983,7 +983,7 @@ $db->close();
     <div class="insights-sections-grid">
         <!-- Dawn Chorus Order -->
         <section class="insights-section">
-            <div class="insights-section-title">🌅 Dawn Chorus Order (4 AM – 10 AM) <span class="info-btn">ⓘ<span class="info-tooltip">Species are ranked by their average "wake up" time (the first time they are heard each day between 4 AM and 10 AM). At least 3 days of dawn data are required for a bird to be ranked.</span></span></div>
+            <div class="insights-section-title">🌅 Dawn Chorus Order (4 AM – 10 AM) <span class="info-btn">i<span class="info-tooltip">Species are ranked by their average "wake up" time (the first time they are heard each day between 4 AM and 10 AM). At least 3 days of dawn data are required for a bird to be ranked.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($dawn_chorus)): ?>
                 <div class="insights-stats-item">
@@ -1018,7 +1018,7 @@ $db->close();
 
         <!-- Nocturnal Detections -->
         <section class="insights-section">
-            <div class="insights-section-title">🦉 Nocturnal Activity (10 PM – 4 AM) <span class="info-btn">ⓘ<span class="info-tooltip">Bird activity detected during night hours. Includes owls, nightjars, and some late-night or early-morning songsters.</span></span></div>
+            <div class="insights-section-title">🦉 Nocturnal Activity (10 PM – 4 AM) <span class="info-btn">i<span class="info-tooltip">Bird activity detected during night hours. Includes owls, nightjars, and some late-night or early-morning songsters.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($nocturnal)): ?>
                 <div class="insights-stats-item">
@@ -1051,7 +1051,7 @@ $db->close();
 
     <!-- Activity Windows -->
     <section class="insights-section" style="margin-top: 30px;">
-        <div class="insights-section-title">⏱️ Activity Windows (Top Species) <span class="info-btn">ⓘ<span class="info-tooltip">The typical earliest and latest times a species is active at your station. Only species with 5+ detections are included to ensure reliable timing data.</span></span></div>
+        <div class="insights-section-title">⏱️ Activity Windows (Top Species) <span class="info-btn">i<span class="info-tooltip">The typical earliest and latest times a species is active at your station. Only species with 5+ detections are included to ensure reliable timing data.</span></span></div>
         <div class="insights-stats-list">
             <?php if(empty($activity_windows)): ?>
             <div class="insights-stats-item">
@@ -1089,7 +1089,7 @@ $db->close();
     <div class="insights-sections-grid">
         <!-- New Arrivals -->
         <section class="insights-section">
-            <div class="insights-section-title">🆕 New Arrivals (Last 14 Days) <span class="info-btn">ⓘ<span class="info-tooltip">Species appearing in the last 14 days that were absent for the previous 2 weeks. Useful for tracking return migration.</span></span></div>
+            <div class="insights-section-title">🆕 New Arrivals (Last 14 Days) <span class="info-btn">i<span class="info-tooltip">Species appearing in the last 14 days that were absent for the previous 2 weeks. Useful for tracking return migration.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($new_arrivals)): ?>
                 <div class="insights-stats-item">
@@ -1121,7 +1121,7 @@ $db->close();
 
         <!-- Gone Quiet -->
         <section class="insights-section">
-            <div class="insights-section-title">🔇 Gone Quiet <span class="info-btn">ⓘ<span class="info-tooltip">Regular residents that haven't been detected in at least 14 days. This may indicate they have migrated away or changed territories.</span></span></div>
+            <div class="insights-section-title">🔇 Gone Quiet <span class="info-btn">i<span class="info-tooltip">Regular residents that haven't been detected in at least 14 days. This may indicate they have migrated away or changed territories.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($gone_quiet)): ?>
                 <div class="insights-stats-item">
@@ -1154,7 +1154,7 @@ $db->close();
 
     <!-- Year-over-Year Comparison -->
     <section class="insights-section" style="margin-top: 30px;">
-        <div class="insights-section-title">📅 Year-over-Year Arrival Comparison (<?php echo $last_year; ?> vs <?php echo $current_year; ?>) <span class="info-btn">ⓘ<span class="info-tooltip">Tracking if migratory species arrived earlier or later than they did in the previous calendar year.</span></span></div>
+        <div class="insights-section-title">📅 Year-over-Year Arrival Comparison (<?php echo $last_year; ?> vs <?php echo $current_year; ?>) <span class="info-btn">i<span class="info-tooltip">Tracking if migratory species arrived earlier or later than they did in the previous calendar year.</span></span></div>
         <div class="insights-stats-list">
             <?php if(empty($yoy_comparison)): ?>
             <div class="insights-stats-item">
@@ -1200,7 +1200,7 @@ $db->close();
     <!-- Seasonal Presence -->
     <section class="insights-section" style="margin-top: 30px;">
         <?php $seasonal_loaded_count = count($seasonal_top); ?>
-        <div class="insights-section-title">🗓️ Seasonal Presence <span class="info-btn">ⓘ<span class="info-tooltip" style="width: 340px;"><strong>Classification Guide:</strong><br>• <strong>Year-round:</strong> Detected across 9+ months<br>• <strong>Seasonal:</strong> Detected across 3-8 months<br>• <strong>Transient:</strong> Detected &lt;3 months<br><br><strong>Data Accuracy Disclaimer:</strong><br>These classifications may be inaccurate if the station has been running for less than a full year, as it lacks seasonal historical context.<br><br>Bar <strong>height</strong> is expected frequency. <strong>Purple highlights</strong> are actual detections.</span></span></div>
+        <div class="insights-section-title">🗓️ Seasonal Presence <span class="info-btn">i<span class="info-tooltip" style="width: 340px;"><strong>Classification Guide:</strong><br>• <strong>Year-round:</strong> Detected across 9+ months<br>• <strong>Seasonal:</strong> Detected across 3-8 months<br>• <strong>Transient:</strong> Detected &lt;3 months<br><br><strong>Data Accuracy Disclaimer:</strong><br>These classifications may be inaccurate if the station has been running for less than a full year, as it lacks seasonal historical context.<br><br>Bar <strong>height</strong> is expected frequency. <strong>Purple highlights</strong> are actual detections.</span></span></div>
         <div class="insights-stats-list" id="seasonal-presence-list">
             <?php if(empty($seasonal_top)): ?>
             <div class="insights-stats-item">
@@ -1239,7 +1239,7 @@ $db->close();
     <!-- Temp vs Detections Chart -->
     <?php if(!empty($temp_vs_detections)): ?>
     <section class="insights-section" style="margin-bottom: 30px;">
-        <div class="insights-section-title">📈 Temperature vs Detections (Last 30 Days) <span class="info-btn">ⓘ<span class="info-tooltip">A day-by-day comparison of average ambient temperature against the total number of bird detections.</span></span></div>
+        <div class="insights-section-title">📈 Temperature vs Detections (Last 30 Days) <span class="info-btn">i<span class="info-tooltip">A day-by-day comparison of average ambient temperature against the total number of bird detections.</span></span></div>
         <div style="padding: 20px;">
             <canvas id="tempVsDetChart" height="120"></canvas>
         </div>
@@ -1249,7 +1249,7 @@ $db->close();
     <div class="insights-sections-grid">
         <!-- Temperature Brackets -->
         <section class="insights-section">
-            <div class="insights-section-title">🌡️ Detections by Temperature <span class="info-btn">ⓘ<span class="info-tooltip">Grouping activity into temperature brackets to show if your birds are more active in the heat or the cold.</span></span></div>
+            <div class="insights-section-title">🌡️ Detections by Temperature <span class="info-btn">i<span class="info-tooltip">Grouping activity into temperature brackets to show if your birds are more active in the heat or the cold.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($temp_brackets)): ?>
                 <div class="insights-stats-item">
@@ -1274,7 +1274,7 @@ $db->close();
 
         <!-- Weather Conditions -->
         <section class="insights-section">
-            <div class="insights-section-title">☁️ Detections by Weather Condition <span class="info-btn">ⓘ<span class="info-tooltip">Correlating bird activity with specific conditions like rain, fog, or clear skies.</span></span></div>
+            <div class="insights-section-title">☁️ Detections by Weather Condition <span class="info-btn">i<span class="info-tooltip">Correlating bird activity with specific conditions like rain, fog, or clear skies.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($condition_impact)): ?>
                 <div class="insights-stats-item">
@@ -1299,7 +1299,7 @@ $db->close();
 
         <!-- Unified Wind Trends -->
         <section class="insights-section" style="grid-column: 1 / -1; margin-top: 10px;">
-            <div class="insights-section-title">🌬️ Detections by Wind Speed & Direction <span class="info-btn">ⓘ<span class="info-tooltip">Correlates bird detections with wind intensity and direction. Rows show wind speed ranges from Calm to Gale Force. The middle columns break down detections by cardinal direction (N, NE, etc.), and the right column shows total detection counts for that speed category. This identifies how wind patterns and direction influence local bird activity.</span></span></div>
+            <div class="insights-section-title">🌬️ Detections by Wind Speed & Direction <span class="info-btn">i<span class="info-tooltip">Correlates bird detections with wind intensity and direction. Rows show wind speed ranges from Calm to Gale Force. The middle columns break down detections by cardinal direction (N, NE, etc.), and the right column shows total detection counts for that speed category. This identifies how wind patterns and direction influence local bird activity.</span></span></div>
             <div class="insights-stats-list" style="padding: 15px 25px;">
                 <?php foreach($wind_impact as $bracket => $w): ?>
                 <div class="insights-stats-item" style="display: flex; flex-direction: row; align-items: stretch; justify-content: space-between; gap: 0; padding: 16px 20px; margin-bottom: 8px;">
@@ -1343,7 +1343,7 @@ $db->close();
 
     <!-- Ideal Conditions Per Species -->
     <section class="insights-section" style="margin-top: 30px;">
-        <div class="insights-section-title">🎯 Average Recorded Temperature per Species <span class="info-btn">ⓘ<span class="info-tooltip">The average ambient temperature recorded at the station during all hours this species was detected. Only includes species with 5+ detections.</span></span></div>
+        <div class="insights-section-title">🎯 Average Recorded Temperature per Species <span class="info-btn">i<span class="info-tooltip">The average ambient temperature recorded at the station during all hours this species was detected. Only includes species with 5+ detections.</span></span></div>
         <div class="insights-stats-list">
             <?php if(empty($species_ideal)): ?>
             <div class="insights-stats-item">
@@ -1382,7 +1382,7 @@ $db->close();
     <!-- Confidence KPIs -->
     <div class="insights-kpi-cards" style="margin-bottom: 30px;">
         <div class="insights-kpi-card">
-            <span class="insights-kpi-val"><?php echo $overall_avg_conf; ?><span class="info-btn">ⓘ<span class="info-tooltip">The average AI classification confidence across all detections. Lower numbers may indicate background noise or interference.</span></span></span>
+            <span class="insights-kpi-val"><?php echo $overall_avg_conf; ?><span class="info-btn">i<span class="info-tooltip">The average AI classification confidence across all detections. Lower numbers may indicate background noise or interference.</span></span></span>
             <span class="insights-kpi-label">Avg Confidence</span>
         </div>
         <div class="insights-kpi-card">
@@ -1412,7 +1412,7 @@ $db->close();
     <div class="insights-sections-grid">
         <!-- Phantom Species -->
         <section class="insights-section">
-            <div class="insights-section-title">👻 Phantom Suspects (Lowest Confidence) <span class="info-btn">ⓘ<span class="info-tooltip">Species with consistently low confidence scores. While these may be valid detections of distant birds, they have a higher chance of being misidentifications and may warrant manual review.</span></span></div>
+            <div class="insights-section-title">👻 Phantom Suspects (Lowest Confidence) <span class="info-btn">i<span class="info-tooltip">Species with consistently low confidence scores. While these may be valid detections of distant birds, they have a higher chance of being misidentifications and may warrant manual review.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($phantom_species)): ?>
                 <div class="insights-stats-item">
@@ -1447,7 +1447,7 @@ $db->close();
 
         <!-- Detection Bursts & Silent Days -->
         <section class="insights-section">
-            <div class="insights-section-title">📊 Anomaly Days <span class="info-btn">ⓘ<span class="info-tooltip">Statistical outliers: 'Bursts' indicate unusual activity spikes, while 'Quiet Days' may signal station downtime or storms.</span></span></div>
+            <div class="insights-section-title">📊 Anomaly Days <span class="info-btn">i<span class="info-tooltip">Statistical outliers: 'Bursts' indicate unusual activity spikes, while 'Quiet Days' may signal station downtime or storms.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(!empty($burst_days)): ?>
                 <div style="font-size: 0.9em; font-weight: 600; color: var(--text-heading); padding: 0 15px;">🔥 Detection Bursts (>1.5× avg of <?php echo $avg_daily; ?>/day)</div>
@@ -1494,7 +1494,7 @@ $db->close();
         <!-- Shannon Diversity Index Card -->
         <div class="insights-kpi-card" style="flex: 1 1 300px;">
             <div>
-                <span class="insights-kpi-val"><?php echo $shannon_index; ?><span class="info-btn">ⓘ<span class="info-tooltip">A scientific measure of biodiversity that counts both species richness and population balance (evenness). Higher is better.</span></span></span>
+                <span class="insights-kpi-val"><?php echo $shannon_index; ?><span class="info-btn">i<span class="info-tooltip">A scientific measure of biodiversity that counts both species richness and population balance (evenness). Higher is better.</span></span></span>
                 <span class="insights-kpi-label">Shannon Diversity Index (30d)</span>
             </div>
             <div style="margin-top: 10px; font-size: 0.9em;">
@@ -1532,7 +1532,7 @@ $db->close();
     <div class="insights-sections-grid">
         <!-- Expect Today -->
         <section class="insights-section">
-            <div class="insights-section-title">📅 Expected Today (Historical Consistency) <span class="info-btn">ⓘ<span class="info-tooltip">Species that have appeared within +/- 3 days of today's date in previous years. Predicts seasonal residents.</span></span></div>
+            <div class="insights-section-title">📅 Expected Today (Historical Consistency) <span class="info-btn">i<span class="info-tooltip">Species that have appeared within +/- 3 days of today's date in previous years. Predicts seasonal residents.</span></span></div>
             <div class="insights-stats-list">
                 <?php if(empty($expected_today)): ?>
                 <div class="insights-stats-item">
@@ -1564,7 +1564,7 @@ $db->close();
 
         <!-- Peak Weeks -->
         <section class="insights-section">
-            <div class="insights-section-title">📍 Historical Peak Weeks <span class="info-btn">ⓘ<span class="info-tooltip">The specific week of the year (1-52) when each species has historically reached its maximum detection volume.</span></span></div>
+            <div class="insights-section-title">📍 Historical Peak Weeks <span class="info-btn">i<span class="info-tooltip">The specific week of the year (1-52) when each species has historically reached its maximum detection volume.</span></span></div>
             <div class="insights-stats-list">
                 <?php $rank_pw = 1; foreach($peak_species as $s): ?>
                 <div class="insights-stats-item <?php echo $rank_pw > 10 ? 'hidden-item' : ''; ?>">

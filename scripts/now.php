@@ -118,15 +118,20 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
     <section class="now-kpis" aria-label="Today's totals">
       <div class="ui-card kpi-mini"><div class="kpi-mini-value" id="kpiDetections"><?php echo (int)$summary['todaycount']; ?></div><div class="kpi-mini-label">Detections today</div></div>
       <div class="ui-card kpi-mini"><div class="kpi-mini-value" id="kpiSpecies"><?php echo (int)$summary['speciestally']; ?></div><div class="kpi-mini-label">Species today</div></div>
-      <div class="ui-card kpi-mini" title="<?php echo h($visit_explainer); ?>"><div class="kpi-mini-value" id="kpiVisits"><?php echo $visits_today; ?></div><div class="kpi-mini-label">Visits today &#9432;</div></div>
+      <div class="ui-card kpi-mini" title="<?php echo h($visit_explainer); ?>"><div class="kpi-mini-value" id="kpiVisits"><?php echo $visits_today; ?></div><div class="kpi-mini-label">Visits today <span class="info-badge">i</span></div></div>
       <div class="ui-card kpi-mini"><div class="kpi-mini-value" id="kpiNew"><?php echo (int)$summary['newspeciestally']; ?></div><div class="kpi-mini-label">New species</div></div>
       <div class="kpi-lifetime">Lifetime: <strong><?php echo number_format((int)$summary['totalcount']); ?></strong> detections &middot; <strong><?php echo (int)$summary['totalspeciestally']; ?></strong> species</div>
     </section>
   </div>
 
   <section class="ui-card now-species" aria-label="Today's species">
-    <h3><?php echo nav_icon('bird'); ?> Today's species <span class="now-species-hint">detections by hour, with weather</span></h3>
-    <div class="species-grid" id="todaySpeciesGrid"><div class="visit-empty">Loading&hellip;</div></div>
+    <h3><?php echo nav_icon('bird'); ?> Today's species
+      <span class="now-species-hint">detections by hour, with weather</span>
+      <span class="view-toggle" role="group" aria-label="Species view style">
+        <button type="button" id="speciesViewGrid" class="active" aria-pressed="true">Grid</button><button type="button" id="speciesViewHeatmap" aria-pressed="false">Heatmap</button>
+      </span>
+    </h3>
+    <div class="species-grid" id="todaySpeciesContainer"><div class="visit-empty">Loading&hellip;</div></div>
   </section>
 </div>
 
@@ -199,7 +204,7 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
       when +
       ' &middot; <span class="feed-badge ' + confClass(pct) + '">' + pct + '%</span>' +
       ' &middot; ' + v.count + ' detection' + (v.count === 1 ? '' : 's') + ' this visit' +
-      ' <span class="visit-info" title="' + esc(visitExplainer) + '">&#9432;</span>' + weather;
+      ' <span class="info-badge" title="' + esc(visitExplainer) + '">i</span>' + weather;
 
     var badges = [];
     if (v.is_new_lifetime) {
@@ -281,32 +286,105 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
     return '<div class="spark">' + bars + '</div><div class="spark-axis">' + axis + '</div>';
   }
 
+  var speciesData = null;
+  var speciesView = localStorage.getItem('birdnet-species-view') === 'heatmap' ? 'heatmap' : 'grid';
+
+  function renderSpeciesGridCards(data) {
+    return (data.species || []).map(function (s) {
+      var photo = s.image
+        ? '<img loading="lazy" src="' + esc(s.image) + '" alt="">'
+        : '<span class="species-card-noimg" aria-hidden="true">&#119067;</span>';
+      return '<div class="species-card-mini">' +
+        '<div class="species-card-photo">' + photo + '</div>' +
+        '<div class="species-card-head">' +
+          '<span class="species-card-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
+          '<span class="species-card-stats">' + s.count + ' detections</span>' +
+        '</div>' +
+        renderHourChart(data.hourly ? data.hourly[s.name] : null, data.weather, data.currentHour) +
+        '</div>';
+    }).join('');
+  }
+
+  function renderHeatmapTable(data) {
+    var head = '<tr><th class="hm-species">Species</th>';
+    for (var h = 0; h < 24; h++) {
+      var w = data.weather ? data.weather[h] : null;
+      var nowCls = data.currentHour != null && h === data.currentHour ? ' hm-now' : '';
+      head += '<th class="hm-hour' + nowCls + '"><span class="hm-hour-label">' + hourLabel(h) + '</span>' +
+        (w ? '<span class="hm-weather" aria-hidden="true">' + weatherEmoji(w.code, w.is_day) + '</span>' +
+             '<span class="hm-temp">' + Math.round(w.temp) + '&deg;</span>' : '') +
+        '</th>';
+    }
+    head += '<th class="hm-total">Total</th></tr>';
+
+    var rows = (data.species || []).map(function (s) {
+      var hourly = (data.hourly && data.hourly[s.name]) || {};
+      var max = 1;
+      for (var h = 0; h < 24; h++) {
+        var c = hourly[h] || 0;
+        if (c > max) max = c;
+      }
+      var cells = '';
+      for (var h = 0; h < 24; h++) {
+        var c = hourly[h] || 0;
+        var alpha = c > 0 ? (0.15 + 0.75 * (c / max)) : 0;
+        var nowCls = data.currentHour != null && h === data.currentHour ? ' hm-now' : '';
+        cells += '<td class="hm-cell' + nowCls + '"' +
+          (c > 0 ? ' style="background: rgba(79,70,229,' + alpha.toFixed(2) + ');' + (alpha > 0.55 ? ' color:#fff;' : '') + '"' : '') +
+          ' title="' + esc(s.name) + ' — ' + hourLabel(h) + ' — ' + c + ' detection' + (c === 1 ? '' : 's') + '">' +
+          (c > 0 ? c : '') + '</td>';
+      }
+      return '<tr><td class="hm-species" title="' + esc(s.name) + '">' + esc(s.name) + '</td>' + cells +
+        '<td class="hm-total">' + s.count + '</td></tr>';
+    }).join('');
+
+    return '<table class="species-heatmap"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  function renderSpecies() {
+    if (!speciesData) return;
+    var box = document.getElementById('todaySpeciesContainer');
+    if (!speciesData.species || speciesData.species.length === 0) {
+      box.className = 'species-grid';
+      box.innerHTML = '<div class="visit-empty">No species yet today.</div>';
+      return;
+    }
+    if (speciesView === 'heatmap') {
+      box.className = 'heatmap-wrap';
+      box.innerHTML = renderHeatmapTable(speciesData);
+    } else {
+      box.className = 'species-grid';
+      box.innerHTML = renderSpeciesGridCards(speciesData);
+    }
+  }
+
+  function setSpeciesView(mode) {
+    speciesView = mode;
+    localStorage.setItem('birdnet-species-view', mode);
+    var gridBtn = document.getElementById('speciesViewGrid');
+    var heatBtn = document.getElementById('speciesViewHeatmap');
+    gridBtn.classList.toggle('active', mode === 'grid');
+    gridBtn.setAttribute('aria-pressed', mode === 'grid' ? 'true' : 'false');
+    heatBtn.classList.toggle('active', mode === 'heatmap');
+    heatBtn.setAttribute('aria-pressed', mode === 'heatmap' ? 'true' : 'false');
+    renderSpecies();
+  }
+
+  document.getElementById('speciesViewGrid').addEventListener('click', function () { setSpeciesView('grid'); });
+  document.getElementById('speciesViewHeatmap').addEventListener('click', function () { setSpeciesView('heatmap'); });
+  if (speciesView === 'heatmap') {
+    setSpeciesView('heatmap');
+  }
+
   function refreshSpeciesGrid() {
     fetch('overview.php?ajax_chart_data=true&_=' + Date.now(), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { if (!r.ok) throw new Error('grid failed'); return r.json(); })
       .then(function (data) {
-        var grid = document.getElementById('todaySpeciesGrid');
-        var species = data.species || [];
-        if (species.length === 0) {
-          grid.innerHTML = '<div class="visit-empty">No species yet today.</div>';
-          return;
-        }
-        grid.innerHTML = species.map(function (s) {
-          var photo = s.image
-            ? '<img loading="lazy" src="' + esc(s.image) + '" alt="">'
-            : '<span class="species-card-noimg" aria-hidden="true">&#119067;</span>';
-          return '<div class="species-card-mini">' +
-            '<div class="species-card-photo">' + photo + '</div>' +
-            '<div class="species-card-head">' +
-              '<span class="species-card-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
-              '<span class="species-card-stats">' + s.count + ' detections</span>' +
-            '</div>' +
-            renderHourChart(data.hourly ? data.hourly[s.name] : null, data.weather, data.currentHour) +
-            '</div>';
-        }).join('');
+        speciesData = data;
+        renderSpecies();
       })
       .catch(function () {
-        document.getElementById('todaySpeciesGrid').innerHTML = '<div class="visit-empty">Species grid unavailable.</div>';
+        document.getElementById('todaySpeciesContainer').innerHTML = '<div class="visit-empty">Species data unavailable.</div>';
       });
   }
 

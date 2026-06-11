@@ -97,10 +97,11 @@
   justify-content: center;
 }
 
+/* contain (not cover) so the whole bird is always visible */
 .hero-photo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .hero-photo-placeholder .nav-icon {
@@ -209,16 +210,113 @@
   gap: 5px;
 }
 
-.visit-info {
-  cursor: help;
-  color: var(--text-muted);
-}
-
 .now-species-hint {
   margin-left: auto;
   font-size: var(--text-xs, 0.75rem);
   font-weight: 400;
   color: var(--text-muted);
+}
+
+/* Grid / Heatmap segmented toggle */
+.view-toggle {
+  margin-left: 12px;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.view-toggle button {
+  border: none;
+  background: var(--bg-button);
+  color: var(--text-secondary);
+  padding: 5px 14px;
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.view-toggle button:hover {
+  background: var(--bg-button-hover);
+}
+
+.view-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Heatmap view: species rows x 24 hour columns, weather in the header */
+.heatmap-wrap {
+  overflow-x: auto;
+}
+
+.species-heatmap {
+  width: 100%;
+  border-collapse: collapse;
+  box-shadow: none;
+  border-radius: 0;
+  font-size: 0.72rem;
+  background: transparent;
+}
+
+.species-heatmap th,
+.species-heatmap td {
+  padding: 3px 2px;
+  text-align: center;
+  background: transparent;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+
+.species-heatmap td.hm-species,
+.species-heatmap th.hm-species {
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 10px;
+}
+
+.hm-hour-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+}
+
+.hm-weather {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.hm-temp {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.6rem;
+}
+
+.hm-cell {
+  min-width: 23px;
+  height: 24px;
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+th.hm-now .hm-hour-label {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+td.hm-now {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.hm-total {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .species-grid {

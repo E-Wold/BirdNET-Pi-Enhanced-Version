@@ -93,6 +93,6 @@ $site_name = get_sitename();
   }
 
   refreshTicker();
-  setInterval(refreshTicker, 15000);
+  setInterval(refreshTicker, 10000);
 })();
 </script>
