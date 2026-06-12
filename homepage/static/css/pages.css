@@ -962,7 +962,8 @@ a.species-card-photo:hover img {
   color: var(--text-primary);
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
+  /* left-aligned so the thumbnails form a uniform column */
+  justify-content: flex-start;
   gap: 6px;
 }
 

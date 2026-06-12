@@ -128,16 +128,6 @@
   margin: 0;
 }
 
-.sidebar.collapsed .sidebar-health .health-text {
-  display: none;
-}
-
-.sidebar.collapsed .sidebar-health {
-  justify-content: center;
-  margin: 8px 10px 0;
-  padding: 6px 0;
-}
-
 /* ===== Palette launch buttons ===== */
 .palette-launch {
   display: flex;
