@@ -111,6 +111,12 @@ Check out birds from around the world
 
 ![Settings - System Health](docs/settings_health.png)
 
+![Species Gallery with Bird Detail Pages](docs/species_gallery_v2.png)
+
+![Insights - Weather Impacts with Takeaways](docs/weather_takeaways.png)
+
+![Your Year in Birds](docs/year_in_birds.png)
+
 ## Requirements
 * A Raspberry Pi 5, Raspberry 4B, Raspberry Pi 400, Raspberry Pi 3B+, or Raspberry Pi 0W2 (The 3B+ and 0W2 must run on RaspiOS-ARM64-Lite). *Note: Due to the heavy data processing required for the modern Analytics and Insights pages, a newer Raspberry Pi (4B, 400, or 5) is highly recommended for optimal performance.*
 * An SD Card with the 64-bit version of RaspiOS installed (please use **Trixie**) -- Lite is recommended, but the installation works on RaspiOS-ARM64-Full as well. Downloads available within the [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
