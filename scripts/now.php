@@ -195,7 +195,8 @@ $visit_explainer = 'A visit groups repeated detections of the same bird. After '
       </div>
     </section>
 
-    <section class="now-kpis" aria-label="Today's totals">
+    <section class="now-kpis" aria-label="Station totals for all species">
+      <div class="kpi-kicker">TODAY &middot; ALL SPECIES</div>
       <div class="ui-card kpi-mini"><div class="kpi-mini-value" id="kpiDetections"><?php echo (int)$summary['todaycount']; ?></div><div class="kpi-mini-label">Detections today</div></div>
       <div class="ui-card kpi-mini"><div class="kpi-mini-value" id="kpiSpecies"><?php echo (int)$summary['speciestally']; ?></div><div class="kpi-mini-label">Species today</div></div>
       <div class="ui-card kpi-mini" title="<?php echo h($visit_explainer); ?>"><div class="kpi-mini-value" id="kpiVisits"><?php echo $visits_today; ?></div><div class="kpi-mini-label">Visits today <span class="info-badge">i</span></div></div>

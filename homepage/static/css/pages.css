@@ -173,6 +173,18 @@
   align-content: start;
 }
 
+/* Label matching the hero's LAST HEARD kicker, so the totals read as their
+   own section (all species) rather than stats for the hero bird */
+.kpi-kicker {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-align: left;
+  margin-bottom: -4px;
+}
+
 .kpi-mini {
   padding: var(--space-3, 12px);
   text-align: center;
