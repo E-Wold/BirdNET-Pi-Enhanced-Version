@@ -942,24 +942,49 @@ a.species-card-photo:hover img {
 }
 
 .tl-label {
-  width: 180px;
+  width: 200px;
   flex-shrink: 0;
   padding-right: 10px;
   font-size: var(--text-sm, 0.85rem);
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: right;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 a.tl-label:hover { color: var(--accent); font-weight: 600; }
+
+.tl-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.tl-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* the name truncates; the thumbnail and count never do */
+.tl-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .tl-lane-count {
   color: var(--text-muted);
   font-weight: 400;
   font-size: 0.85em;
+  flex-shrink: 0;
 }
 
 .tl-track {

@@ -152,10 +152,40 @@ $tl_date = isset($_GET['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['da
           ' title="' + esc(sp.name) + ' ' + esc(c.first_time.slice(0, 5)) + ' · ' + c.count + '× · ' + pct + '%"></button>';
       }).join('');
       return '<div class="tl-lane">' +
-        '<a class="tl-label" href="?view=Bird&sci_name=' + encodeURIComponent(sciKey) + '" title="' + esc(sp.name) + '">' + esc(sp.name) + ' <span class="tl-lane-count">' + totals[sciKey] + '</span></a>' +
+        '<a class="tl-label" href="?view=Bird&sci_name=' + encodeURIComponent(sciKey) + '" title="' + esc(sp.name) + '">' +
+          '<span class="tl-thumb" data-sci="' + esc(sciKey) + '"></span>' +
+          '<span class="tl-name">' + esc(sp.name) + '</span>' +
+          '<span class="tl-lane-count">' + totals[sciKey] + '</span>' +
+        '</a>' +
         '<div class="tl-track">' + gridLines() + blocks + '</div>' +
         '</div>';
     }).join('');
+
+    loadThumbs();
+  }
+
+  // Fill species thumbnails progressively from the local image cache, one
+  // lookup per species (shared via a promise so duplicates never refetch).
+  function loadThumbs() {
+    var pending = {};
+    document.querySelectorAll('.tl-thumb[data-sci]').forEach(function (el) {
+      var sciName = el.getAttribute('data-sci');
+      if (!pending[sciName]) {
+        pending[sciName] = fetch('api/v1/image/' + encodeURIComponent(sciName), { headers: { 'Accept': 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; });
+      }
+      pending[sciName].then(function (j) {
+        if (j && j.data && j.data.image_url) {
+          var img = document.createElement('img');
+          img.loading = 'lazy';
+          img.alt = '';
+          img.src = j.data.image_url;
+          img.onerror = function () { img.remove(); };
+          el.appendChild(img);
+        }
+      });
+    });
   }
 
   function gridLines() {
