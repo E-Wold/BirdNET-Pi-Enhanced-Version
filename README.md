@@ -79,27 +79,19 @@ Check out birds from around the world
 - Engineered dynamic CSS **SVG Tooltips** (`ⓘ`) next to every field to actively guide the user on eBird's official formatting rules.
 
 ## Screenshots
-![Analytics Dashboard - Heatmap](docs/analytics_heatmap.png)
-
-![Overview Dashboard](docs/overview.png)
-
-![Analytics Dashboard - Top](docs/analytics_top.png)
-
-![Analytics Dashboard - Bottom](docs/analytics_bottom.png)
-
-![Insights - Migration](docs/insights_migration.png)
-
-![Insights - Seasonal Presence](docs/insights_seasonality.png)
-
-![Insights - Weather](docs/insights_weather.png)
-
-![Species Gallery](docs/species_gallery.png)
-
 ![Now Page - Today's Story, Last Heard & Species Heatmap](docs/now_page.png)
 
 ![Now Page - Today's Species Heatmap with Weather](docs/now_heatmap.png)
 
 ![Timeline - Day Replay](docs/timeline_day_replay.png)
+
+![Analytics Dashboard](docs/analytics_dashboard.png)
+
+![Analytics Dashboard - Top](docs/analytics_top.png)
+
+![Analytics Dashboard - Bottom](docs/analytics_bottom.png)
+
+![Species Gallery with Bird Detail Pages](docs/species_gallery_v2.png)
 
 ![Review Queue - Verify by Comparison](docs/review_queue.png)
 
@@ -107,11 +99,7 @@ Check out birds from around the world
 
 ![Insights - Seasonal Presence](docs/seasonal_presence.png)
 
-![Analytics Dashboard](docs/analytics_dashboard.png)
-
 ![Settings - System Health](docs/settings_health.png)
-
-![Species Gallery with Bird Detail Pages](docs/species_gallery_v2.png)
 
 ![Insights - Weather Impacts with Takeaways](docs/weather_takeaways.png)
 
