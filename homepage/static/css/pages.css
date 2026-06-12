@@ -1137,6 +1137,124 @@ a.tl-label:hover { color: var(--accent); font-weight: 600; }
   font-weight: 600;
 }
 
+/* ===== Year in Birds ===== */
+.year-page {
+  max-width: 980px;
+  margin: 0 auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.year-kpis {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.year-champions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4, 16px);
+}
+
+.year-champ {
+  border-left: 4px solid var(--accent);
+}
+
+.year-champ-title {
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.year-champ-name {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-heading);
+  margin: 4px 0 2px;
+}
+
+.year-champ-detail {
+  color: var(--text-secondary);
+  font-size: var(--text-sm, 0.85rem);
+}
+
+.year-months {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.year-month {
+  flex: 1;
+  text-align: center;
+}
+
+.year-month-bar-wrap {
+  height: 110px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.year-month-bar {
+  width: 100%;
+  background: var(--accent);
+  opacity: 0.8;
+  border-radius: 4px 4px 0 0;
+}
+
+.year-month-label {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ===== First-run setup checklist (Now page) ===== */
+.setup-checklist {
+  border-left: 4px solid var(--warning, #f59e0b);
+}
+
+.setup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setup-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.setup-check {
+  width: 20px;
+  text-align: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.setup-list li.done .setup-check { color: var(--success, #10b981); }
+.setup-list li.todo .setup-check { color: var(--text-muted); }
+
+.setup-list li.done .setup-label {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.setup-body { display: flex; flex-direction: column; }
+
+.setup-label { font-weight: 600; }
+
+.setup-why {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--text-secondary);
+}
+
 /* ===== Plain-English takeaways (Insights) ===== */
 .takeaways-card {
   background: var(--bg-card);

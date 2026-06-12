@@ -546,6 +546,22 @@ https://discordapp.com/api/webhooks/{WebhookID}/{WebhookToken}
       <span id="testsuccessmsg"></span>
       </td></tr></table><br>
       <table class="settingstable"><tr><td>
+      <h2 id="settings-privacy">Privacy</h2>
+      <p>BirdNET-Pi records audio around your home, so it ships with privacy protections:</p>
+      <ul style="text-align:left; line-height:1.6;">
+        <li><strong>Human-voice filtering:</strong> when the AI hears human speech near a detection, that detection is discarded instead of being saved
+          <?php if (isset($config['PRIVACY_THRESHOLD'])) { ?>
+            &mdash; currently <?php echo (int)$config['PRIVACY_THRESHOLD'] > 0 ? 'enabled at threshold <strong>' . h($config['PRIVACY_THRESHOLD']) . '</strong>' : '<strong>disabled</strong> (threshold 0)'; ?>.
+            Adjust it under <a href="?view=Advanced">Advanced Settings</a>.
+          <?php } else { ?>
+            (configure under <a href="?view=Advanced">Advanced Settings</a>).
+          <?php } ?>
+        </li>
+        <li><strong>Only short clips are kept:</strong> full-length recordings are deleted after analysis; only the extracted detection clips remain, and old clips are purged automatically when disk space runs low.</li>
+        <li><strong>Local by default:</strong> nothing leaves your network unless you enable an integration (BirdWeather, Apprise, weather sync, species images).</li>
+      </ul>
+      </td></tr></table><br>
+      <table class="settingstable"><tr><td>
       <h2 id="settings-species">Species Images</h2>
       <label for="image_provider">Image Provider: </label>
       <select name="image_provider" class="testbtn">

@@ -38,17 +38,6 @@ if(is_authenticated() && (!isset($_SESSION['behind']) || !isset($_SESSION['behin
   $_SESSION['behind'] = $num_commits_behind;
   $_SESSION['behind_time'] = time();
 }
-$setup_warning = "";
-if ($config["LATITUDE"] == "0.000" && $config["LONGITUDE"] == "0.000") {
-  $setup_warning = "Your latitude and longitude are not set properly. Please do so now in Tools -> Settings.";
-}
-elseif ($config["LATITUDE"] == "0.000") {
-  $setup_warning = "Your latitude is not set properly. Please do so now in Tools -> Settings.";
-}
-elseif ($config["LONGITUDE"] == "0.000") {
-  $setup_warning = "Your longitude is not set properly. Please do so now in Tools -> Settings.";
-}
-
 $site_name = get_sitename();
 $current_view = isset($_GET['view']) ? $_GET['view'] : 'Now';
 $current_subview = isset($_GET['subview']) ? $_GET['subview'] : '';
@@ -85,12 +74,23 @@ function nav_icon($name) {
   <meta name="description" content="BirdNET-Pi - Bird sound identification and monitoring dashboard">
   <title><?php echo h($page_title); ?></title>
   <link id="iconLink" rel="shortcut icon" sizes="85x85" href="images/bird.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="images/pwa-192.png">
+  <meta name="theme-color" content="#4f46e5">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').catch(function () {});
+      });
+    }
+  </script>
   <link rel="stylesheet" href="<?php echo $color_scheme . '?v=' . date('n.d.y', filemtime($color_scheme)); ?>">
   <link rel="stylesheet" href="static/css/tokens.css?v=<?php echo filemtime('static/css/tokens.css'); ?>">
   <link rel="stylesheet" href="static/css/shell.css?v=<?php echo filemtime('static/css/shell.css'); ?>">
   <link rel="stylesheet" href="static/css/pages.css?v=<?php echo filemtime('static/css/pages.css'); ?>">
   <link rel="stylesheet" type="text/css" href="static/dialog-polyfill.css">
   <script src="static/ui-helpers.js?v=<?php echo date('n.d.y', filemtime('static/ui-helpers.js')); ?>" defer></script>
+  <script src="static/palette.js?v=<?php echo filemtime('static/palette.js'); ?>" defer></script>
   <?php if (isset($_SESSION['behind']) && intval($_SESSION['behind']) >= 99) { ?>
   <style>
     .updatenumber {
@@ -157,6 +157,7 @@ $insights_items = [
   ['Insights', 'health', 'search', 'Health'],
   ['Insights', 'forecasting', 'trending-up', 'Trends & Forecasting'],
   ['Insights', 'report', 'file-text', 'Reports'],
+  ['Year', null, 'award', 'Year in Birds'],
 ];
 $main_nav = [
   ['Now', 'home', 'Now'],
@@ -174,7 +175,7 @@ $nav_aliases = [
 ];
 foreach ($main_nav as $nav_item) {
   if ($nav_item === 'INSIGHTS') {
-    $insights_open = ($current_view === 'Insights' || $current_view === 'Analytics');
+    $insights_open = ($current_view === 'Insights' || $current_view === 'Analytics' || $current_view === 'Year');
     $effective_subview = $current_subview === '' ? 'dashboard' : $current_subview;
     echo '<div class="sidebar-dropdown' . ($insights_open ? ' open' : '') . '">';
     echo '<button type="button" class="sidebar-dropdown-toggle" aria-expanded="' . ($insights_open ? 'true' : 'false') . '">' . nav_icon('zap') . ' <span>Insights</span> <span class="dropdown-arrow" aria-hidden="true">&#9660;</span></button>';
@@ -422,10 +423,6 @@ function copyOutput(elem) {
 
 <div class="views">
 <?php
-if ($setup_warning !== "") {
-  echo '<div class="ui-message ui-message-warning" role="alert" style="max-width:900px;margin:0 auto 16px;"><strong>Setup needed</strong><span>' . h($setup_warning) . '</span></div>';
-}
-
 function update_species_list($filename, $species, $add) {
     if($add){
         $str = file_get_contents($filename);
@@ -473,6 +470,7 @@ if(isset($_GET['view'])){
   if($_GET['view'] == "Review"){include('scripts/review.php');}
   if($_GET['view'] == "Timeline"){include('scripts/timeline.php');}
   if($_GET['view'] == "Bird"){include('scripts/bird.php');}
+  if($_GET['view'] == "Year"){include('scripts/year.php');}
   if($_GET['view'] == "Overview"){include('overview.php');}
   if($_GET['view'] == "Todays Detections"){include('todays_detections.php');}
   if($_GET['view'] == "Kiosk"){$kiosk = true;include('todays_detections.php');}
@@ -801,5 +799,22 @@ function installKeyAndSwipeEventHandler() {
 installKeyAndSwipeEventHandler();
 </script>
 </div>
+<nav class="bottom-nav" aria-label="Quick navigation">
+<?php
+$bottom_nav = [
+  ['Now', 'home', 'Now'],
+  ['Timeline', 'clock', 'Timeline'],
+  ['Species', 'bird', 'Birds'],
+  ['Review', 'search', 'Review'],
+];
+foreach ($bottom_nav as $bn) {
+  $bn_active = ($current_view === $bn[0])
+    || (isset($nav_aliases[$bn[0]]) && in_array($current_view, $nav_aliases[$bn[0]], true));
+  echo '<a href="?view=' . rawurlencode($bn[0]) . '"' . ($bn_active ? ' class="active" aria-current="page"' : '') . '>'
+     . nav_icon($bn[1]) . '<span>' . h($bn[2]) . '</span></a>';
+}
+?>
+  <button type="button" onclick="myFunction()" aria-label="Open full menu"><?php echo nav_icon('menu'); ?><span>More</span></button>
+</nav>
 </body>
 </html>

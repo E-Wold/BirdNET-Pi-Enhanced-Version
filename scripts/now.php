@@ -125,10 +125,50 @@ if ($story_html === false) {
 $summary = get_summary();
 $visits_today = count(get_visits($db, []));
 $gap_minutes = (int) round(get_visit_gap_seconds() / 60);
+
+// First-run checklist: shown until the essentials are done. Replaces the old
+// red lat/lon warning with a guided card and a completion score.
+$config = get_config();
+$home = get_home();
+$loc_done = ($config['LATITUDE'] ?? '0.000') !== '0.000' && ($config['LONGITUDE'] ?? '0.000') !== '0.000';
+$pwd_done = !empty($config['CADDY_PWD']);
+$first_detection_done = (int)$summary['totalcount'] > 0;
+$apprise_path = $home . '/BirdNET-Pi/apprise.txt';
+$notify_done = file_exists($apprise_path) && filesize($apprise_path) > 0;
+$setup_items = [
+  ['done' => $loc_done, 'label' => 'Set your station location', 'why' => 'Species range filtering and rarity need it.', 'href' => '?view=Settings', 'required' => true],
+  ['done' => $pwd_done, 'label' => 'Set an admin password', 'why' => 'Anyone on your network can change settings without one.', 'href' => '?view=Advanced', 'required' => true],
+  ['done' => $first_detection_done, 'label' => 'First bird detected', 'why' => 'Happens on its own - most stations hear one within minutes.', 'href' => '?view=Live', 'required' => true],
+  ['done' => $notify_done, 'label' => 'Set up notifications (optional)', 'why' => 'Get pinged for new visits and rare birds.', 'href' => '?view=Settings', 'required' => false],
+];
+$setup_done_count = count(array_filter($setup_items, function ($i) { return $i['done']; }));
+$show_setup = !$loc_done || !$pwd_done || !$first_detection_done;
 $visit_explainer = 'A visit groups repeated detections of the same bird. After ' . $gap_minutes
   . ' quiet minute' . ($gap_minutes === 1 ? '' : 's') . ' without that species, the next detection starts a new visit.';
 ?>
 <div class="now-page">
+  <?php if ($show_setup) { ?>
+  <section class="ui-card setup-checklist" aria-label="Setup checklist">
+    <h3><?php echo nav_icon('sliders'); ?> Finish setting up your station
+      <span class="now-species-hint"><?php echo $setup_done_count; ?> of <?php echo count($setup_items); ?> done</span>
+    </h3>
+    <ul class="setup-list">
+      <?php foreach ($setup_items as $item) { ?>
+      <li class="<?php echo $item['done'] ? 'done' : 'todo'; ?>">
+        <span class="setup-check" aria-hidden="true"><?php echo $item['done'] ? '&#10003;' : '&#9675;'; ?></span>
+        <span class="setup-body">
+          <?php if ($item['done']) { ?>
+            <span class="setup-label"><?php echo h($item['label']); ?></span>
+          <?php } else { ?>
+            <a class="setup-label" href="<?php echo h($item['href']); ?>"><?php echo h($item['label']); ?> &rarr;</a>
+            <span class="setup-why"><?php echo h($item['why']); ?></span>
+          <?php } ?>
+        </span>
+      </li>
+      <?php } ?>
+    </ul>
+  </section>
+  <?php } ?>
   <section class="now-story ui-card" aria-label="Today's story">
     <h3><?php echo nav_icon('zap'); ?> Today's Story</h3>
     <ul class="story-lines"><?php echo $story_html; ?></ul>

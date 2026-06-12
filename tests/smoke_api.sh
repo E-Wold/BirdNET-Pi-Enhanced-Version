@@ -78,6 +78,20 @@ check "ebird preview" 200 "/api/v1/exports/ebird/preview"
 check_contains "preview has row_count" '"row_count"'
 check "settings page has quiet hours" 200 "/?view=Settings" -u "$AUTH"
 check_contains "quiet hours fields" "apprise_quiet_start"
+check "settings privacy panel" 200 "/?view=Settings" -u "$AUTH"
+check_contains "privacy section" "Human-voice filtering"
+check "manifest" 200 "/manifest.webmanifest"
+check_contains "manifest has start url" '"start_url"'
+check "service worker" 200 "/sw.js"
+check_contains "sw has cache name" "birdnet-static"
+check "pwa icon 192" 200 "/images/pwa-192.png"
+check "year in birds" 200 "/?view=Year"
+check_contains "year has champions or empty" "in Birds"
+check "year previous" 200 "/?view=Year&y=2025"
+check "shell has palette" 200 "/?view=Now"
+check_contains "palette script loaded" "palette.js"
+check_contains "bottom nav present" "bottom-nav"
+check_contains "manifest linked" "manifest.webmanifest"
 for sv in dashboard behavior migration environmental health forecasting report; do
   check "insights $sv" 200 "/?view=Insights&subview=$sv"
 done
