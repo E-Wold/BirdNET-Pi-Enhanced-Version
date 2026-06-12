@@ -25,6 +25,12 @@ if ($requestMethod !== 'GET' && !($requestMethod === 'POST' && $is_post_route)) 
 $db = new SQLite3(__ROOT__ . '/scripts/birds.db', SQLITE3_OPEN_READONLY);
 $db->busyTimeout(1000);
 
+// Reviewed false positives / hidden detections are excluded from curated
+// analytics; raw streams (recent feed, timeline) stay unfiltered.
+$fp_pred = review_exclusion_sql($db);
+$fp_and = $fp_pred === '' ? '' : ' AND ' . $fp_pred;
+$fp_where = $fp_pred === '' ? '' : ' WHERE ' . $fp_pred;
+
 function api_json($data, $status = 200) {
   http_response_code($status);
   header('Content-Type: application/json');
@@ -135,7 +141,7 @@ function api_current_weather($db) {
 }
 
 function api_format_service($service) {
-  $status = trim(shell_exec('systemctl is-active ' . escapeshellarg($service) . ' 2>/dev/null'));
+  $status = trim((string) shell_exec('systemctl is-active ' . escapeshellarg($service) . ' 2>/dev/null'));
   if ($status === '') {
     $status = 'unknown';
   }
@@ -223,6 +229,9 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
   $where_clauses = [];
+  if ($fp_pred !== '') {
+    $where_clauses[] = $fp_pred;
+  }
   if ($time_period !== 'all') {
     $periods = ['24h' => '-1 day', '7d' => '-7 days', '30d' => '-30 days', '90d' => '-90 days', '1y' => '-1 year'];
     if (isset($periods[$time_period])) {
@@ -331,7 +340,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   }
 } elseif (preg_match('#^/api/v1/analytics/activity$#', $requestUri)) {
   $days = request_int($_GET, 'days', 30, 1, 3650);
-  $stmt = $db->prepare('SELECT strftime("%H", Time) as Hour, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Hour ORDER BY Hour ASC');
+  $stmt = $db->prepare('SELECT strftime("%H", Time) as Hour, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Hour ORDER BY Hour ASC');
   $result = db_execute_safe($db, $stmt, 'api analytics activity');
   $data = [];
   while ($row = db_fetch_assoc_safe($result)) {
@@ -353,22 +362,22 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $days = request_int($_GET, 'days', 7, 1, 3650);
   
   // Total detections
-  $stmt = $db->prepare('SELECT COUNT(*) as total FROM detections WHERE Date >= DATE("now", "-'.$days.' days")');
+  $stmt = $db->prepare('SELECT COUNT(*) as total FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and);
   $total_row = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'api analytics stats total'));
   $total = $total_row['total'] ?? 0;
   
   // Unique species
-  $stmt = $db->prepare('SELECT COUNT(DISTINCT(Sci_Name)) as unique_species FROM detections WHERE Date >= DATE("now", "-'.$days.' days")');
+  $stmt = $db->prepare('SELECT COUNT(DISTINCT(Sci_Name)) as unique_species FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and);
   $unique_row = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'api analytics stats unique'));
   $unique = $unique_row['unique_species'] ?? 0;
   
   // Avg confidence
-  $stmt = $db->prepare('SELECT AVG(Confidence) as avg_conf FROM detections WHERE Date >= DATE("now", "-'.$days.' days")');
+  $stmt = $db->prepare('SELECT AVG(Confidence) as avg_conf FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and);
   $avg_conf_row = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'api analytics stats confidence'));
   $avg_conf = $avg_conf_row['avg_conf'] ?? 0;
   
   // Most common
-  $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Sci_Name ORDER BY count DESC LIMIT 1');
+  $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Sci_Name ORDER BY count DESC LIMIT 1');
   $most_common = db_fetch_assoc_safe(db_execute_safe($db, $stmt, 'api analytics stats most common'));
 
   http_response_code(200);
@@ -386,7 +395,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $days = request_int($_GET, 'days', 7, 1, 3650);
   
   // Find species whose FIRST detection was within the last N days
-  $stmt = $db->prepare('SELECT Com_Name, Sci_Name, MIN(Date) as first_date, MIN(Time) as first_time FROM detections GROUP BY Sci_Name HAVING first_date >= DATE("now", "-'.$days.' days") ORDER BY first_date DESC, first_time DESC');
+  $stmt = $db->prepare('SELECT Com_Name, Sci_Name, MIN(Date) as first_date, MIN(Time) as first_time FROM detections'.$fp_where.' GROUP BY Sci_Name HAVING first_date >= DATE("now", "-'.$days.' days") ORDER BY first_date DESC, first_time DESC');
   $result = db_execute_safe($db, $stmt, 'api analytics new species');
   $data = [];
   while ($row = db_fetch_assoc_safe($result)) {
@@ -400,7 +409,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
 } elseif (preg_match('#^/api/v1/analytics/diversity$#', $requestUri)) {
   $days = request_int($_GET, 'days', 30, 1, 3650);
   
-  $stmt = $db->prepare('SELECT Date, COUNT(DISTINCT(Sci_Name)) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Date ORDER BY Date ASC');
+  $stmt = $db->prepare('SELECT Date, COUNT(DISTINCT(Sci_Name)) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Date ORDER BY Date ASC');
   $result = db_execute_safe($db, $stmt, 'api analytics diversity');
   
   $dates = [];
@@ -417,7 +426,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
 } elseif (preg_match('#^/api/v1/analytics/detections$#', $requestUri)) {
   $days = request_int($_GET, 'days', 30, 1, 3650);
   
-  $stmt = $db->prepare('SELECT Date, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Date ORDER BY Date ASC');
+  $stmt = $db->prepare('SELECT Date, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Date ORDER BY Date ASC');
   $result = db_execute_safe($db, $stmt, 'api analytics detections');
   
   $dates = [];
@@ -435,7 +444,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $days = request_int($_GET, 'days', 30, 1, 3650);
   $limit = request_int($_GET, 'limit', 10, 1, 100);
   
-  $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Com_Name ORDER BY Count DESC LIMIT '.$limit);
+  $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Com_Name ORDER BY Count DESC LIMIT '.$limit);
   $result = db_execute_safe($db, $stmt, 'api analytics top species');
   $data = [];
   while ($row = db_fetch_assoc_safe($result)) {
@@ -458,7 +467,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
       $target_species = array_slice($target_species, 0, 5);
     }
   } else {
-    $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Com_Name ORDER BY Count DESC LIMIT 5');
+    $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Com_Name ORDER BY Count DESC LIMIT 5');
     $result = db_execute_safe($db, $stmt, 'api analytics trends default species');
     while ($row = db_fetch_assoc_safe($result)) {
       $target_species[] = $row['Com_Name'];
@@ -474,7 +483,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
 
   // Get daily counts for each target species
   foreach ($target_species as $species) {
-    $stmt = $db->prepare('SELECT Date, COUNT(*) as Count FROM detections WHERE Com_Name = :com_name AND Date >= DATE("now", "-'.$days.' days") GROUP BY Date');
+    $stmt = $db->prepare('SELECT Date, COUNT(*) as Count FROM detections WHERE Com_Name = :com_name AND Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Date');
     $stmt->bindValue(':com_name', $species, SQLITE3_TEXT);
     $result = db_execute_safe($db, $stmt, 'api analytics trends species');
     
@@ -507,7 +516,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
       $target_species = array_slice($target_species, 0, 5);
     }
   } else {
-    $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days") GROUP BY Com_Name ORDER BY Count DESC LIMIT 5');
+    $stmt = $db->prepare('SELECT Com_Name, COUNT(*) as Count FROM detections WHERE Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Com_Name ORDER BY Count DESC LIMIT 5');
     $result = db_execute_safe($db, $stmt, 'api analytics patterns default species');
     while ($row = db_fetch_assoc_safe($result)) {
       $target_species[] = $row['Com_Name'];
@@ -516,7 +525,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   
   $data = [];
   foreach ($target_species as $species) {
-    $stmt = $db->prepare('SELECT strftime("%H", Time) as Hour, COUNT(*) as count FROM detections WHERE Com_Name = :com_name AND Date >= DATE("now", "-'.$days.' days") GROUP BY Hour ORDER BY Hour ASC');
+    $stmt = $db->prepare('SELECT strftime("%H", Time) as Hour, COUNT(*) as count FROM detections WHERE Com_Name = :com_name AND Date >= DATE("now", "-'.$days.' days")'.$fp_and.' GROUP BY Hour ORDER BY Hour ASC');
     $stmt->bindValue(':com_name', $species, SQLITE3_TEXT);
     $result = db_execute_safe($db, $stmt, 'api analytics patterns species');
     
@@ -704,14 +713,23 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   $summary = get_summary();
   $visits_today = get_visits($db, []);
 
-  $latest = null;
+  // The hero never shows a visit whose best detection was reviewed away
+  $hero_reviews = [];
   if (!empty($visits_today)) {
-    $latest = $visits_today[0];
-    foreach ($visits_today as $v) {
-      if (time_to_seconds($v['last_time']) >= time_to_seconds($latest['last_time'])) {
-        $latest = $v;
-      }
+    $hero_files = array_map(function ($v) { return $v['best_file']; }, $visits_today);
+    $hero_reviews = get_review_map($db, $hero_files);
+  }
+  $latest = null;
+  foreach ($visits_today as $v) {
+    $hero_status = isset($hero_reviews[$v['best_file']]) ? $hero_reviews[$v['best_file']] : null;
+    if ($hero_status === 'false_positive' || $hero_status === 'hidden') {
+      continue;
     }
+    if ($latest === null || time_to_seconds($v['last_time']) >= time_to_seconds($latest['last_time'])) {
+      $latest = $v;
+    }
+  }
+  if ($latest !== null) {
     $first_stmt = $db->prepare('SELECT MIN(Date) AS first_seen FROM detections WHERE Sci_Name = :sci');
     $first_stmt->bindValue(':sci', $latest['sci_name'], SQLITE3_TEXT);
     $first_row = db_fetch_assoc_safe(db_execute_safe($db, $first_stmt, 'now first seen'));
@@ -725,7 +743,7 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
   }
 
   $new_today = [];
-  $new_res = db_query_safe($db, "SELECT Com_Name, Sci_Name, MIN(Time) AS first_time FROM detections WHERE Date = DATE('now','localtime') AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date < DATE('now','localtime')) GROUP BY Sci_Name ORDER BY first_time DESC LIMIT 5", 'now new today');
+  $new_res = db_query_safe($db, "SELECT Com_Name, Sci_Name, MIN(Time) AS first_time FROM detections WHERE Date = DATE('now','localtime')" . and_review_exclusion($db) . " AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date < DATE('now','localtime')) GROUP BY Sci_Name ORDER BY first_time DESC LIMIT 5", 'now new today');
   while ($row = db_fetch_assoc_safe($new_res)) {
     $new_today[] = ['species' => $row['Com_Name'], 'sci_name' => $row['Sci_Name'], 'first_time' => $row['first_time']];
   }
@@ -885,20 +903,20 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
     exit;
   }
 
-  $stats_total = (int) db_query_single_safe($db, 'SELECT COUNT(*) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")', 0, 'bundle total');
-  $stats_unique = (int) db_query_single_safe($db, 'SELECT COUNT(DISTINCT(Sci_Name)) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")', 0, 'bundle unique');
-  $stats_avg = (float) db_query_single_safe($db, 'SELECT AVG(Confidence) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")', 0, 'bundle avg conf');
-  $most_common = db_query_one_safe($db, 'SELECT Com_Name, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Sci_Name ORDER BY count DESC LIMIT 1', 'bundle most common');
+  $stats_total = (int) db_query_single_safe($db, 'SELECT COUNT(*) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and, 0, 'bundle total');
+  $stats_unique = (int) db_query_single_safe($db, 'SELECT COUNT(DISTINCT(Sci_Name)) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and, 0, 'bundle unique');
+  $stats_avg = (float) db_query_single_safe($db, 'SELECT AVG(Confidence) FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and, 0, 'bundle avg conf');
+  $most_common = db_query_one_safe($db, 'SELECT Com_Name, COUNT(*) as count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and . ' GROUP BY Sci_Name ORDER BY count DESC LIMIT 1', 'bundle most common');
 
   $activity = array_fill(0, 24, 0);
-  $act_res = db_query_safe($db, 'SELECT CAST(strftime("%H", Time) AS INTEGER) AS hour, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY hour', 'bundle activity');
+  $act_res = db_query_safe($db, 'SELECT CAST(strftime("%H", Time) AS INTEGER) AS hour, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and . ' GROUP BY hour', 'bundle activity');
   while ($row = db_fetch_assoc_safe($act_res)) {
     $activity[(int)$row['hour']] = (int)$row['count'];
   }
 
   $daily_dates = [];
   $daily_counts = [];
-  $daily_res = db_query_safe($db, 'SELECT Date, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Date ORDER BY Date ASC', 'bundle daily');
+  $daily_res = db_query_safe($db, 'SELECT Date, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and . ' GROUP BY Date ORDER BY Date ASC', 'bundle daily');
   while ($row = db_fetch_assoc_safe($daily_res)) {
     $daily_dates[] = $row['Date'];
     $daily_counts[] = (int)$row['count'];
@@ -906,14 +924,14 @@ if (preg_match('#^/api/v1/system/health$#', $requestUri)) {
 
   $div_dates = [];
   $div_counts = [];
-  $div_res = db_query_safe($db, 'SELECT Date, COUNT(DISTINCT(Sci_Name)) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Date ORDER BY Date ASC', 'bundle diversity');
+  $div_res = db_query_safe($db, 'SELECT Date, COUNT(DISTINCT(Sci_Name)) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and . ' GROUP BY Date ORDER BY Date ASC', 'bundle diversity');
   while ($row = db_fetch_assoc_safe($div_res)) {
     $div_dates[] = $row['Date'];
     $div_counts[] = (int)$row['count'];
   }
 
   $top = [];
-  $top_res = db_query_safe($db, 'SELECT Com_Name, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days") GROUP BY Com_Name ORDER BY count DESC LIMIT 10', 'bundle top');
+  $top_res = db_query_safe($db, 'SELECT Com_Name, COUNT(*) AS count FROM detections WHERE Date >= DATE("now", "-' . $days . ' days")' . $fp_and . ' GROUP BY Com_Name ORDER BY count DESC LIMIT 10', 'bundle top');
   while ($row = db_fetch_assoc_safe($top_res)) {
     $top[] = ['species' => $row['Com_Name'], 'count' => (int)$row['count']];
   }

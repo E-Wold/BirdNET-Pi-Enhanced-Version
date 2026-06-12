@@ -37,7 +37,11 @@ install provides: the config file, the docroot link layout, and a database.
      `New-Item -ItemType Junction`)
    - link these files from `scripts/` into `homepage/`: `overview.php`,
      `play.php`, `spectrogram.php`, `stats.php`, `todays_detections.php`,
-     `history.php` (Windows: hardlinks)
+     `history.php` (Windows: hardlinks; symlinks if Developer Mode is on).
+     **Hardlink gotcha:** editors that save via write-temp-then-rename sever
+     hardlinks, leaving `homepage/` serving a stale copy. If a change to one
+     of these six files doesn't show up, delete the `homepage/` copies and
+     recreate the links.
    - add all of those to `.git/info/exclude` so `git status` stays clean
 
 3. **Timezone shim** — `set_timezone()` shells out to `timedatectl`. On

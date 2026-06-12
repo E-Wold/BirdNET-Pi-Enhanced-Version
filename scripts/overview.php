@@ -116,8 +116,9 @@ if(isset($_GET['fetch_chart_string']) && $_GET['fetch_chart_string'] == "true") 
 if(isset($_GET['ajax_chart_data']) && $_GET['ajax_chart_data'] == "true") {
   header('Content-Type: application/json');
 
-  // Species aggregate: name, count, max confidence
-  $stmt1 = $db->prepare("SELECT Com_Name, Sci_Name, COUNT(*) as cnt, MAX(Confidence) as maxConf FROM detections WHERE Date = DATE('now','localtime') GROUP BY Sci_Name ORDER BY cnt DESC");
+  // Species aggregate: name, count, max confidence.
+  // Detections reviewed as false positives (or hidden) are excluded.
+  $stmt1 = $db->prepare("SELECT Com_Name, Sci_Name, COUNT(*) as cnt, MAX(Confidence) as maxConf FROM detections WHERE Date = DATE('now','localtime')" . and_review_exclusion($db) . " GROUP BY Sci_Name ORDER BY cnt DESC");
   ensure_db_ok($stmt1);
   $res1 = db_execute_safe($db, $stmt1, 'overview chart species');
     // For image fetching
@@ -169,8 +170,8 @@ if(isset($_GET['ajax_chart_data']) && $_GET['ajax_chart_data'] == "true") {
       ];
     }
 
-  // Hourly breakdown per species
-  $stmt2 = $db->prepare("SELECT Com_Name, CAST(strftime('%H', Time) AS INTEGER) as hour, COUNT(*) as cnt FROM detections WHERE Date = DATE('now','localtime') GROUP BY Com_Name, hour");
+  // Hourly breakdown per species (same review exclusion as the aggregate)
+  $stmt2 = $db->prepare("SELECT Com_Name, CAST(strftime('%H', Time) AS INTEGER) as hour, COUNT(*) as cnt FROM detections WHERE Date = DATE('now','localtime')" . and_review_exclusion($db) . " GROUP BY Com_Name, hour");
   ensure_db_ok($stmt2);
   $res2 = db_execute_safe($db, $stmt2, 'overview chart hourly');
   $hourly = [];

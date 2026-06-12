@@ -740,6 +740,18 @@ a.species-card-photo:hover img {
   color: #fff;
 }
 
+.bird-notify-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+
+.bird-notify-mode select {
+  cursor: pointer;
+}
+
 .bird-action-result { margin-top: 8px; min-height: 1.2em; }
 
 .bird-stats {

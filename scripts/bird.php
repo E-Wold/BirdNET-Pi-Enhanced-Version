@@ -22,6 +22,17 @@ if ($bird_sci === '') {
       <div class="bird-actions">
         <button type="button" class="ui-button-link" id="favBtn" aria-pressed="false">&#9734; Favorite</button>
         <button type="button" class="ui-button-link" id="muteBtn" aria-pressed="false">&#128277; Mute notifications</button>
+        <label class="bird-notify-mode">
+          <span>Notify me:</span>
+          <select id="notifyModeSel" class="ui-button-link" aria-label="Notification mode for this species">
+            <option value="default">Station default</option>
+            <option value="every_visit">Every visit</option>
+            <option value="first_daily">First time each day</option>
+            <option value="first_lifetime">First ever only</option>
+            <option value="rare_only">Only when rare</option>
+            <option value="never">Never</option>
+          </select>
+        </label>
         <a class="ui-button-link" id="infoLink" href="#" target="_blank" rel="noopener">Field guide &rarr;</a>
         <a class="ui-button-link" id="wikiLink" href="#" target="_blank" rel="noopener">Wikipedia &rarr;</a>
       </div>
@@ -111,6 +122,21 @@ if ($bird_sci === '') {
   document.getElementById('muteBtn').addEventListener('click', function () {
     postJson('api/v1/species/prefs', { sci_name: sci, muted: !prefs.muted })
       .then(function (j) { prefs = j.prefs; renderPrefButtons(); showActionResult(prefs.muted ? 'Notifications muted for this species.' : 'Notifications unmuted.'); })
+      .catch(function (e) { showActionResult(e.message, true); });
+  });
+
+  document.getElementById('notifyModeSel').addEventListener('change', function () {
+    var sel = this;
+    var labels = {
+      'default': 'Following the station-wide rules.',
+      every_visit: 'You will be notified at the start of every visit.',
+      first_daily: 'You will be notified the first time each day.',
+      first_lifetime: 'You will only be notified if this species is brand new.',
+      rare_only: 'You will only be notified when a detection is rare.',
+      never: 'This species will never notify you.'
+    };
+    postJson('api/v1/species/prefs', { sci_name: sci, notify_mode: sel.value })
+      .then(function (j) { showActionResult(labels[j.prefs.notify_mode] || 'Saved.'); })
       .catch(function (e) { showActionResult(e.message, true); });
   });
 
@@ -282,6 +308,7 @@ if ($bird_sci === '') {
       document.title = d.common_name + ' · BirdNET-Pi';
       if (d.prefs) { prefs = { favorite: parseInt(d.prefs.favorite, 10) || 0, muted: parseInt(d.prefs.muted, 10) || 0 }; }
       renderPrefButtons();
+      document.getElementById('notifyModeSel').value = (d.prefs && d.prefs.notify_mode) || 'default';
       var badges = [];
       // New = first heard within the last week (not merely "heard on one day ever")
       var firstSeenDays = d.first_seen ? (Date.now() - new Date(d.first_seen + 'T12:00:00').getTime()) / 86400000 : 999;

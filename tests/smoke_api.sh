@@ -92,6 +92,9 @@ check "shell has palette" 200 "/?view=Now"
 check_contains "palette script loaded" "palette.js"
 check_contains "bottom nav present" "bottom-nav"
 check_contains "manifest linked" "manifest.webmanifest"
+check_contains "palette launch button" "palette-launch"
+check "bird page notify mode" 200 "/?view=Bird&sci_name=Cardinalis%20cardinalis"
+check_contains "notify mode select" "notifyModeSel"
 for sv in dashboard behavior migration environmental health forecasting report; do
   check "insights $sv" 200 "/?view=Insights&subview=$sv"
 done

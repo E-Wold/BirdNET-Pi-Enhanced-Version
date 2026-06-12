@@ -22,9 +22,10 @@ function build_todays_story($db) {
   $today_count = (int) db_query_single_safe($db,
     "SELECT COUNT(*) FROM detections WHERE Date = DATE('now','localtime') AND Time <= '" . SQLite3::escapeString($now_time) . "'", 0, 'story today');
 
-  // Brand-new lifetime species today
+  // Brand-new lifetime species today (reviewed false positives never make news)
+  $fp_excl = and_review_exclusion($db);
   $new_species = [];
-  $res = db_query_safe($db, "SELECT Com_Name FROM detections WHERE Date = DATE('now','localtime') AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date < DATE('now','localtime')) GROUP BY Sci_Name LIMIT 3", 'story new species');
+  $res = db_query_safe($db, "SELECT Com_Name FROM detections WHERE Date = DATE('now','localtime')$fp_excl AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date < DATE('now','localtime')) GROUP BY Sci_Name LIMIT 3", 'story new species');
   while ($row = db_fetch_assoc_safe($res)) {
     $new_species[] = $row['Com_Name'];
   }
@@ -36,7 +37,7 @@ function build_todays_story($db) {
 
   // Species returning after at least two weeks away
   $returns = [];
-  $res = db_query_safe($db, "SELECT Com_Name, CAST(JULIANDAY(DATE('now','localtime')) - JULIANDAY(MAX(Date)) AS INTEGER) AS gap FROM detections WHERE Date < DATE('now','localtime') AND Sci_Name IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date = DATE('now','localtime')) GROUP BY Sci_Name HAVING gap >= 14 ORDER BY gap DESC LIMIT 3", 'story returns');
+  $res = db_query_safe($db, "SELECT Com_Name, CAST(JULIANDAY(DATE('now','localtime')) - JULIANDAY(MAX(Date)) AS INTEGER) AS gap FROM detections WHERE Date < DATE('now','localtime') AND Sci_Name IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date = DATE('now','localtime')$fp_excl) GROUP BY Sci_Name HAVING gap >= 14 ORDER BY gap DESC LIMIT 3", 'story returns');
   while ($row = db_fetch_assoc_safe($res)) {
     $returns[] = $row['Com_Name'] . ' (last heard ' . $row['gap'] . ' days ago)';
   }
@@ -46,7 +47,7 @@ function build_todays_story($db) {
 
   // Rare visitors: heard today, five or fewer lifetime detections, not new today
   $rare = [];
-  $res = db_query_safe($db, "SELECT Com_Name, COUNT(*) AS lifetime FROM detections WHERE Sci_Name IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date = DATE('now','localtime')) GROUP BY Sci_Name HAVING lifetime <= 5 AND MIN(Date) < DATE('now','localtime') LIMIT 3", 'story rare');
+  $res = db_query_safe($db, "SELECT Com_Name, COUNT(*) AS lifetime FROM detections WHERE Sci_Name IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date = DATE('now','localtime')$fp_excl) GROUP BY Sci_Name HAVING lifetime <= 5 AND MIN(Date) < DATE('now','localtime') LIMIT 3", 'story rare');
   while ($row = db_fetch_assoc_safe($res)) {
     $rare[] = $row['Com_Name'];
   }
@@ -57,7 +58,7 @@ function build_todays_story($db) {
   // Region-rare: the location model expects almost none of these here right now
   if (!empty(seasonal_expected_scores())) {
     $region_rare = [];
-    $res = db_query_safe($db, "SELECT DISTINCT Sci_Name, Com_Name FROM detections WHERE Date = DATE('now','localtime')", 'story region rare');
+    $res = db_query_safe($db, "SELECT DISTINCT Sci_Name, Com_Name FROM detections WHERE Date = DATE('now','localtime')$fp_excl", 'story region rare');
     while ($row = db_fetch_assoc_safe($res)) {
       if (is_region_rare($row['Sci_Name'])) {
         $region_rare[] = $row['Com_Name'];
@@ -79,7 +80,7 @@ function build_todays_story($db) {
       CAST(JULIANDAY(DATE('now','localtime')) - JULIANDAY(MAX(Date)) AS INTEGER) AS gap
     FROM detections
     WHERE Date >= DATE('now','localtime','-14 days') AND Date < DATE('now','localtime')
-      AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date = DATE('now','localtime'))
+      AND Sci_Name NOT IN (SELECT DISTINCT Sci_Name FROM detections WHERE Date = DATE('now','localtime')$fp_excl)
     GROUP BY Sci_Name
     HAVING days_present >= 10 AND gap >= 2
     ORDER BY days_present DESC LIMIT 3", 'story cadence');

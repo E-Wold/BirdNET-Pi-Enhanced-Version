@@ -706,9 +706,30 @@ function detections_watermark() {
   static $watermark = null;
   if ($watermark === null) {
     $db = get_db();
-    $watermark = (string) db_query_single_safe($db, 'SELECT MAX(rowid) FROM detections', 0, 'cache watermark');
+    $max_id = (string) db_query_single_safe($db, 'SELECT MAX(rowid) FROM detections', 0, 'cache watermark');
+    // Review verdicts change what cached fragments should show, so they are
+    // part of the watermark (created_at refreshes on re-review upserts).
+    $review_mark = spine_table_exists($db, 'detection_reviews')
+      ? (string) db_query_single_safe($db, "SELECT COUNT(*) || '-' || COALESCE(MAX(created_at), '') FROM detection_reviews", '', 'cache watermark reviews')
+      : '';
+    $watermark = $max_id . '|' . $review_mark;
   }
   return $watermark;
+}
+
+/* Predicate excluding detections the user reviewed as false positives or
+   hid. Returns '' when the reviews table doesn't exist yet; callers prepend
+   WHERE/AND as appropriate. $column lets joined queries qualify File_Name. */
+function review_exclusion_sql($db, $column = 'File_Name') {
+  if (!spine_table_exists($db, 'detection_reviews')) {
+    return '';
+  }
+  return "$column NOT IN (SELECT file_name FROM detection_reviews WHERE status IN ('false_positive', 'hidden'))";
+}
+
+function and_review_exclusion($db, $column = 'File_Name') {
+  $predicate = review_exclusion_sql($db, $column);
+  return $predicate === '' ? '' : ' AND ' . $predicate;
 }
 
 function birdnet_cache_key(...$parts) {

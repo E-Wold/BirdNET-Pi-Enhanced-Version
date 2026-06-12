@@ -131,6 +131,7 @@ function nav_icon($name) {
     <img src="images/bnp.png" alt="BirdNET-Pi logo">
   </div>
   <a href="?view=Doctor" class="health-pill unknown" aria-label="Station health"><span class="health-dot" aria-hidden="true"></span><span class="health-text">&hellip;</span></a>
+  <button type="button" class="icon palette-launch-mobile" onclick="window.BirdNETPalette && BirdNETPalette.show()" aria-label="Search pages and species"><?php echo nav_icon('search'); ?></button>
   <button type="button" class="icon" onclick="myFunction()" aria-label="Toggle navigation menu"><img src="images/menu.png" alt=""></button>
 </div>
 <div class="sidebar" id="mySidebar">
@@ -141,6 +142,9 @@ function nav_icon($name) {
     <button type="button" class="sidebar-toggle" onclick="myFunction()" aria-label="Toggle sidebar">«</button>
   </div>
   <a href="?view=Doctor" class="health-pill sidebar-health unknown" aria-label="Station health"><span class="health-dot" aria-hidden="true"></span><span class="health-text">Checking station&hellip;</span></a>
+  <button type="button" class="palette-launch" onclick="window.BirdNETPalette && BirdNETPalette.show()" aria-label="Search pages and species">
+    <?php echo nav_icon('search'); ?> <span>Search&hellip;</span> <kbd>Ctrl K</kbd>
+  </button>
   <nav class="sidebar-nav" aria-label="Main navigation">
 <?php
 /* Question-first navigation (Phase 2). Insights groups the analysis pages,
