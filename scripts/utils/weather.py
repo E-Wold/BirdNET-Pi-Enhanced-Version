@@ -3,6 +3,7 @@ import requests
 import os
 import logging
 from datetime import datetime
+import time
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from helpers import DB_PATH, get_settings
@@ -20,15 +21,28 @@ def update_weather():
         return
 
     # Use Open-Meteo to fetch the past day and current forecast day
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&past_days=1&forecast_days=1&timezone=auto"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,weather_code,is_day,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&past_days=7&forecast_days=1&timezone=auto"
     
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        log.error(f"Failed to fetch weather: {e}")
-        return
+    # Retry logic: 3 attempts with increasing delays (30s, 60s)
+    max_retries = 3
+    retry_delays = [30, 60]
+    data = None
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            break
+        except Exception as e:
+            log.warning(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                delay = retry_delays[attempt]
+                log.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                log.error(f"All {max_retries} attempts failed. Weather data not updated.")
+                return
 
     # Parse data
     times = data['hourly']['time']
