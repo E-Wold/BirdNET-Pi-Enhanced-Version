@@ -112,7 +112,17 @@ if(isset($_GET['fetch_chart_string']) && $_GET['fetch_chart_string'] == "true") 
   echo $chart;
   die();
 }
-
+if(isset($_GET['ajax_species_links']) && $_GET['ajax_species_links'] == "true") {
+  header('Content-Type: application/json');
+  $sciname = isset($_GET['sciName']) ? $_GET['sciName'] : '';
+  $info = get_info_url($sciname);
+  echo json_encode([
+    'infoUrl' => $info['URL'],
+    'infoTitle' => $info['TITLE'],
+    'wikiUrl' => 'https://wikipedia.org/wiki/' . urlencode($sciname)
+  ]);
+  die();
+}
 if(isset($_GET['ajax_chart_data']) && $_GET['ajax_chart_data'] == "true") {
   header('Content-Type: application/json');
 

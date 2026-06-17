@@ -280,6 +280,7 @@
             if (row >= 0 && row < species.length && x > 5 && x < 40) {
                 var s = species[row];
                 if (s.image) {
+                    canvas.style.cursor = 'pointer';
                     var previewImg = imgPreview.querySelector('img');
                     if (previewImg.src !== s.image) previewImg.src = s.image;
                     imgPreview.style.display = 'block';
@@ -298,6 +299,7 @@
                 }
             }
             imgPreview.style.display = 'none';
+            canvas.style.cursor = 'default';
 
             if (x >= labelWidth && hour >= 0 && hour < 24 && row >= 0 && row < species.length) {
                 var s = species[row];
@@ -338,12 +340,80 @@
                 tooltip.style.display = 'none';
             }
         });
-
-        canvas.addEventListener('mouseleave', function () {
+canvas.addEventListener('mouseleave', function () {
             tooltip.style.display = 'none';
             imgPreview.style.display = 'none';
         });
+
+        canvas.addEventListener('click', function (e) {
+            if (!lastData) return;
+            var species = lastData.species;
+
+            var rect = canvas.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var y = e.clientY - rect.top;
+            var width = rect.width;
+            var hasWeather = lastData.weather && Object.keys(lastData.weather).length > 0;
+            var labelWidth = Math.min(220, width * 0.35);
+            var headerHeight = hasWeather ? 48 : 30;
+            var cellHeight = 32;
+
+            var row = Math.floor((y - headerHeight) / cellHeight);
+
+            if (row >= 0 && row < species.length && x > 5 && x < 40) {
+                var s = species[row];
+                openSpeciesCard(s);
+            }
+        });
     }
+
+    function openSpeciesCard(s) {
+        var overlay = document.getElementById('speciesCardOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'speciesCardOverlay';
+            overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99998;align-items:center;justify-content:center;';
+            overlay.innerHTML =
+                '<div id="speciesCardModal" style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;width:320px;max-width:90vw;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.4);">' +
+                    '<div id="speciesCardImgWrap" style="width:100%;height:220px;overflow:hidden;background:var(--bg-input,#1e293b);">' +
+                        '<img id="speciesCardImg" style="width:100%;height:100%;object-fit:cover;" src="">' +
+                    '</div>' +
+                    '<div style="padding:16px;">' +
+                        '<div id="speciesCardName" style="font-weight:700;font-size:1.1em;color:var(--text-primary);"></div>' +
+                        '<div id="speciesCardSci" style="font-style:italic;color:var(--text-muted);margin-bottom:14px;"></div>' +
+                        '<div id="speciesCardLinks" style="display:flex;gap:6px;flex-wrap:wrap;"></div>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) overlay.style.display = 'none';
+            });
+        }
+
+        document.getElementById('speciesCardImg').src = s.image || 'images/bird.png';
+        document.getElementById('speciesCardName').textContent = s.name;
+        document.getElementById('speciesCardSci').textContent = s.sciName || '';
+        var linksEl = document.getElementById('speciesCardLinks');
+        linksEl.innerHTML = '<span style="font-size:0.8em;color:var(--text-muted);">Loading links…</span>';
+        overlay.style.display = 'flex';
+
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function () {
+            try {
+                var data = JSON.parse(xhr.responseText);
+                linksEl.innerHTML =
+                    '<a href="' + data.infoUrl + '" target="_blank" class="mrd-link-pill"><img src="images/info.png"> ' + data.infoTitle + '</a>' +
+                    '<a href="' + data.wikiUrl + '" target="_blank" class="mrd-link-pill"><img src="images/wiki.png"> Wikipedia</a>';
+            } catch (e) {
+                linksEl.innerHTML = '';
+            }
+        };
+        xhr.onerror = function () { linksEl.innerHTML = ''; };
+        xhr.open('GET', 'overview.php?ajax_species_links=true&sciName=' + encodeURIComponent(s.sciName || ''), true);
+        xhr.send();
+    }
+
+
 
     // Cache last data for resize re-render
     var lastData = null;
